@@ -1,0 +1,830 @@
+'use client';
+import React from 'react';
+import { useState, useEffect, useCallback } from 'react';
+import { useSession } from 'next-auth/react';
+import axios from 'axios';
+import Header from '../../components/header';
+import dynamic from 'next/dynamic';
+import SessionInsights from '../../components/SessionInsights';
+import QuestionAnalytics from '../../components/QuestionAnalytics';
+
+const ReactMediaRecorder = dynamic(
+  () => import('react-media-recorder').then((mod) => mod.ReactMediaRecorder),
+  { ssr: false }
+);
+
+const VideoPreview = ({ stream }) => {
+  const videoRef = React.useRef(null);
+
+  React.useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    }
+  }, [stream]);
+
+  return <video ref={videoRef} autoPlay muted playsInline />;
+};
+
+export default function InterviewPrepPage() {
+  const { data: session, status } = useSession();
+  const [jobDescription, setJobDescription] = useState('');
+  const [questions, setQuestions] = useState([]);
+  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const [userAnswer, setUserAnswer] = useState('');
+  const [feedback, setFeedback] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [userId, setUserId] = useState(null);
+  const [error, setError] = useState('');
+  const [isLoadingUser, setIsLoadingUser] = useState(true);
+  const [debugInfo, setDebugInfo] = useState(null);
+  
+  // Enhanced state for session management
+  const [sessionState, setSessionState] = useState({
+    isActive: false,
+    startTime: null,
+    questionTimings: [],
+    overallMetrics: {},
+    sessionId: null
+  });
+
+  const [recordingState, setRecordingState] = useState({
+    isRecording: false,
+    recordingStartTime: null,
+    audioBlob: null,
+    transcript: ''
+  });
+
+  const [sessionComplete, setSessionComplete] = useState(false);
+  const [sessionInsights, setSessionInsights] = useState(null);
+  const [resumeFile, setResumeFile] = useState(null);
+  const [jobDescriptionFile, setJobDescriptionFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [transcription, setTranscription] = useState('');
+  const [recordedVideoMetrics, setRecordedVideoMetrics] = useState(null); // New state for video metrics
+
+  // Clear error after 5 seconds
+  useEffect(() => {
+    if (error) {
+      const timer = setTimeout(() => setError(''), 5000);
+      return () => clearTimeout(timer);
+    }
+  }, [error]);
+
+
+  
+
+  // Load user ID when session is available
+  useEffect(() => {
+    if (session?.user?.email) {
+      console.log('Fetching user ID for email:', session.user.email);
+      axios.get(`http://localhost:5000/api/user/by-email/${session.user.email}`)
+        .then(res => {
+          console.log('API Response:', res.data);
+          if (!res.data || !res.data._id) {
+            throw new Error('No user ID in response');
+          }
+          setUserId(res.data._id);
+          console.log('User ID set to:', res.data._id);
+        })
+        .catch(err => {
+          console.error('Failed to load user ID:', err);
+          setError('Failed to load user profile. Please try refreshing.');
+        })
+        .finally(() => {
+          setIsLoadingUser(false);
+        });
+    } else {
+      console.log('No session or email available');
+      setIsLoadingUser(false); // Also set to false if no session/email
+    }
+  }, [session]);
+
+  // const generateQuestions = useCallback(async () => {
+  //   setError('');
+    
+  //   // Validation
+  //   if (!jobDescription.trim()) {
+  //     setError('Please enter a job description');
+  //     return;
+  //   }
+
+  //   if (jobDescription.trim().length < 50) {
+  //     setError('Job description must be at least 50 characters long');
+  //     return;
+  //   }
+
+  //   if (!userId) {
+  //     setError('User profile not loaded. Please wait or refresh the page.');
+  //     return;
+  //   }
+
+  //   setLoading(true);
+    
+  //   try {
+  //     console.log('Generating questions for user:', userId); // Changed from _id to userId
+      
+  //     const res = await axios.post('http://localhost:5000/api/interview/generate-questions', {
+  //       jobDescription: jobDescription.trim(),
+  //       userId, // This is correct
+  //     });
+      
+  //     console.log('Questions generated:', res.data);
+      
+  //     // Ensure questions is an array before setting state
+  //     if (Array.isArray(res.data.questions)) {
+  //       setQuestions(res.data.questions);
+  //     } else {
+  //       console.error('Received questions data is not an array:', res.data.questions);
+  //       setQuestions([]); // Default to empty array to prevent errors
+  //       setError('Failed to load questions: Invalid data format.');
+  //     }
+  //     setCurrentQuestionIndex(0);
+  //     setFeedback(null);
+  //     setUserAnswer('');
+  //     setSessionComplete(false);
+  //     setSessionInsights(null);
+      
+  //     // Initialize session
+  //     setSessionState({
+  //       isActive: true,
+  //       startTime: Date.now(),
+  //       questionTimings: [],
+  //       overallMetrics: {},
+  //       sessionId: res.data.sessionId
+  //     });
+      
+  //     setError('');
+  //   } catch (err) {
+  //     console.error('Failed to generate questions:', err);
+  //     const errorMessage = err.response?.data?.message || err.response?.data?.error || 'An unexpected error occurred. Please try again.';
+  //     setError(errorMessage);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // },[jobDescription, userId]);
+
+
+
+  // Add this enhanced debugging version to your page.js
+// Replace the generateQuestions function with this version:
+
+const generateQuestions = useCallback(async () => {
+  console.log('=== GENERATE QUESTIONS STARTED ===');
+  
+  setError('');
+
+  // Validation
+  if (!jobDescription.trim() && !jobDescriptionFile) {
+    setError('Please enter a job description or upload a PDF');
+    return;
+  }
+
+  if (jobDescription.trim() && jobDescription.trim().length < 50 && !jobDescriptionFile) {
+    setError('Job description must be at least 50 characters long');
+    return;
+  }
+
+  if (!userId) {
+    setError('User profile not loaded. Please wait or refresh the page.');
+    return;
+  }
+
+  setLoading(true);
+  
+  try {
+    const formData = new FormData();
+    formData.append('userId', userId);
+
+    if (jobDescriptionFile) {
+      formData.append('jobDescriptionFile', jobDescriptionFile);
+    } else {
+      formData.append('jobDescription', jobDescription.trim());
+    }
+
+    const res = await axios.post('http://localhost:5000/api/interview/generate-questions', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+    
+    if (!res.data || !Array.isArray(res.data.questions)) {
+      throw new Error('Invalid response from server');
+    }
+    
+    setQuestions(res.data.questions);
+    setCurrentQuestionIndex(0);
+    setFeedback(null);
+    setUserAnswer('');
+    setSessionComplete(false);
+    setSessionInsights(null);
+    
+    setSessionState({
+      isActive: true,
+      startTime: Date.now(),
+      questionTimings: [],
+      overallMetrics: {},
+      sessionId: res.data.sessionId
+    });
+    
+    setError('');
+    
+  } catch (err) {
+    console.error('=== API ERROR ===');
+    console.error('Error object:', err);
+    const errorMessage = err.response?.data?.message || 
+                        err.response?.data?.error || 
+                        err.message ||
+                        'An unexpected error occurred. Please try again.';
+    setError(errorMessage);
+  } finally {
+    setLoading(false);
+  }
+}, [jobDescription, userId, jobDescriptionFile]);
+
+// Also add this enhanced debug component to see the current state:
+const DebugInfo = () => {
+  if (process.env.NODE_ENV !== 'development') return null;
+  
+  return (
+    <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-6 text-sm">
+      <p><strong>Frontend Debug Info:</strong></p>
+      <p>Session Status: {status}</p>
+      <p>User Email: {session?.user?.email || 'Not loaded'}</p>
+      <p>User ID: {userId || 'Not loaded'}</p>
+      <p>Loading: {loading ? 'Yes' : 'No'}</p>
+      <p>Questions Length: {questions.length}</p>
+      <p>Questions Array: {JSON.stringify(questions.slice(0, 2))}...</p>
+      <p>Current Question Index: {currentQuestionIndex}</p>
+      <p>Session Active: {sessionState.isActive ? 'Yes' : 'No'}</p>
+      <p>Session ID: {sessionState.sessionId || 'None'}</p>
+      <p>Error: {error || 'None'}</p>
+    </div>
+  );
+};
+
+// Add this component right after your existing debug info in the render:
+// <DebugInfo />
+  const analyzeAnswer = useCallback(async (answerToAnalyze) => {
+    if (!answerToAnalyze.trim()) {
+      setError('Please provide an answer');
+      return;
+    }
+    
+    setLoading(true);
+    setError('');
+    
+    try {
+      const audioMetrics = recordingState.recordingStartTime ? {
+        duration: (Date.now() - recordingState.recordingStartTime) / 1000,
+        wordsPerMinute: Math.round((answerToAnalyze.split(' ').length / ((Date.now() - recordingState.recordingStartTime) / 1000)) * 60),
+        wordCount: answerToAnalyze.split(' ').length
+      } : null;
+
+      const res = await axios.post('http://localhost:5000/api/interview/analyze-answer', {
+        question: questions[currentQuestionIndex],
+        answer: answerToAnalyze,
+        audioMetrics,
+        sessionId: sessionState.sessionId,
+        questionIndex: currentQuestionIndex
+      });
+      
+      setFeedback(res.data);
+      
+      // Update question timing
+      const newTiming = {
+        questionIndex: currentQuestionIndex,
+        question: questions[currentQuestionIndex],
+        answer: answerToAnalyze,
+        metrics: audioMetrics,
+        analysis: res.data,
+        timestamp: Date.now()
+      };
+      
+      setSessionState(prev => ({
+        ...prev,
+        questionTimings: [...prev.questionTimings, newTiming]
+      }));
+      
+    } catch (err) {
+      console.error('Failed to analyze answer:', err);
+      setError('Failed to analyze answer. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [questions, currentQuestionIndex, recordingState.recordingStartTime, sessionState.sessionId]);
+
+  const processRecording = async (blobUrl, blob) => {
+    setIsTranscribing(true);
+    setError('');
+    try {
+      const formData = new FormData();
+      formData.append('video_file', blob, 'recording.webm');
+      formData.append('userId', userId);
+      formData.append('sessionId', sessionState.sessionId);
+      formData.append('questionIndex', currentQuestionIndex);
+      formData.append('questionText', questions[currentQuestionIndex]);
+
+      const res = await axios.post('http://localhost:8000/analyze-video', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 120000,
+      });
+      
+      setTranscription(res.data.transcription);
+      setUserAnswer(res.data.transcription); // Update the user's answer with transcription
+      setRecordedVideoMetrics(res.data.videoAnalysis); // Store video analysis
+
+      setError(''); // Clear any previous errors
+      
+    } catch (error) {
+      console.error('Error in processRecording (FastAPI call):', error);
+      if (error.response) {
+        setError(`Recording processing failed: ${error.response.data.detail || error.response.data.error || 'Server error'}`);
+      } else if (error.request) {
+        setError('Recording processing failed: No response from FastAPI server');
+      } else {
+        setError('Recording processing failed: Network error');
+      }
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
+  const analyzeRecordedAnswer = useCallback(async () => {
+    if (!userAnswer.trim()) {
+      setError('No recorded answer to analyze. Please record first.');
+      return;
+    }
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/interview/analyze-answer', {
+        question: questions[currentQuestionIndex],
+        answer: userAnswer,
+        audioMetrics: recordedVideoMetrics, // Use recorded video metrics as audioMetrics
+        sessionId: sessionState.sessionId,
+        questionIndex: currentQuestionIndex
+      });
+
+      setFeedback(res.data);
+
+      // Update question timing
+      const newTiming = {
+        questionIndex: currentQuestionIndex,
+        question: questions[currentQuestionIndex],
+        answer: userAnswer,
+        metrics: recordedVideoMetrics, // Use video analysis as metrics
+        analysis: res.data,
+        timestamp: Date.now()
+      };
+      
+      setSessionState(prev => ({
+        ...prev,
+        questionTimings: [...prev.questionTimings, newTiming]
+      }));
+
+    } catch (err) {
+      console.error('Failed to analyze recorded answer:', err);
+      setError('Failed to analyze recorded answer. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [userAnswer, recordedVideoMetrics, questions, currentQuestionIndex, sessionState.sessionId]);
+
+  const handleStartRecording = useCallback(() => {
+    setRecordingState(prev => ({
+      ...prev,
+      isRecording: true,
+      recordingStartTime: Date.now()
+    }));
+    setTranscription(''); // Clear transcription on new recording start
+    setUserAnswer(''); // Clear user answer on new recording start
+    setFeedback(null); // Clear feedback on new recording start
+  }, []);
+
+  const nextQuestion = useCallback(() => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setUserAnswer('');
+      setFeedback(null);
+      setRecordingState({
+        isRecording: false,
+        recordingStartTime: null,
+        audioBlob: null,
+        transcript: ''
+      });
+    } else {
+      // Complete session
+      completeSession();
+    }
+  }, [currentQuestionIndex, questions.length]);
+
+  const completeSession = useCallback(async () => {
+    setLoading(true);
+    setError('');
+    
+    try {
+      const res = await axios.post('http://localhost:5000/api/interview/complete-session', {
+        sessionId: sessionState.sessionId,
+        userId,
+        questionTimings: sessionState.questionTimings
+      });
+      
+      setSessionInsights(res.data.insights);
+      setSessionComplete(true);
+      setSessionState(prev => ({ ...prev, isActive: false }));
+    } catch (err) {
+      console.error('Failed to complete session:', err);
+      setError('Failed to complete session. Please try again.');
+    } finally {
+      setLoading(false);
+    }
+  }, [sessionState.sessionId, sessionState.questionTimings, userId]);
+
+  const resetSession = useCallback(() => {
+    setQuestions([]);
+    setCurrentQuestionIndex(0);
+    setUserAnswer('');
+    setFeedback(null);
+    setSessionComplete(false);
+    setSessionInsights(null);
+    setError('');
+    setSessionState({
+      isActive: false,
+      startTime: null,
+      questionTimings: [],
+      overallMetrics: {},
+      sessionId: null
+    });
+    setRecordingState({
+      isRecording: false,
+      recordingStartTime: null,
+      audioBlob: null,
+      transcript: ''
+    });
+  }, []);
+
+  const uploadResume = async () => {
+    if (!resumeFile || !userId) {
+      setUploadStatus('Please select a file and ensure you are logged in');
+      return;
+    }
+
+    if (resumeFile.type !== 'application/pdf') {
+      setUploadStatus('Please upload a PDF file only');
+      return;
+    }
+
+    if (resumeFile.size > 5 * 1024 * 1024) {
+      setUploadStatus('File size must be less than 5MB');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('resume', resumeFile);
+    formData.append('userId', userId);
+
+    try {
+      setIsUploading(true);
+      setUploadStatus('Uploading...');
+      
+      const res = await axios.post('http://localhost:5000/api/user/upload-resume', formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+        },
+        timeout: 30000, // 30 second timeout
+      });
+      
+      setUploadStatus('Resume uploaded successfully!');
+      setResumeFile(null);
+      const fileInput = document.querySelector('input[type="file"]');
+      if (fileInput) fileInput.value = '';
+      
+    } catch (err) {
+      if (err.response) {
+        setUploadStatus(`Upload failed: ${err.response.data.error || 'Server error'}`);
+      } else if (err.request) {
+        setUploadStatus('Upload failed: No response from server');
+      } else {
+        setUploadStatus('Upload failed: Network error');
+      }
+    } finally {
+      setIsUploading(false);
+    }
+  };
+  
+
+  // Loading state for authentication
+  if (status === 'loading' || isLoadingUser) {
+    return (
+      <main className="min-h-screen px-4 py-8 bg-gray-50">
+        <Header />
+        <div className="max-w-4xl mx-auto mt-8">
+          <div className="text-center py-8">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto"></div>
+            <p className="mt-4 text-gray-600">Loading user profile...</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Not authenticated
+  if (status === 'unauthenticated') {
+    return (
+      <main className="min-h-screen px-4 py-8 bg-gray-50">
+        <Header />
+        <div className="max-w-4xl mx-auto mt-8">
+          <div className="text-center py-8">
+            <h2 className="text-2xl font-semibold mb-4">Authentication Required</h2>
+            <p className="text-gray-600">Please sign in to access the interview prep tool.</p>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  // Session complete view
+  if (sessionComplete && sessionInsights) {
+    return (
+      <main className="min-h-screen px-4 py-8 bg-gray-50">
+        <Header />
+        <div className="max-w-6xl mx-auto mt-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-semibold">Interview Session Complete</h2>
+            <button
+              onClick={resetSession}
+              className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors"
+            >
+              Start New Session
+            </button>
+          </div>
+          <SessionInsights sessionData={sessionInsights} />
+        </div>
+      </main>
+    );
+  }
+
+  return (
+    <main className="min-h-screen px-4 py-8 bg-gray-50">
+      <Header />
+      <div className="max-w-4xl mx-auto mt-8">
+        <h2 className="text-2xl font-semibold mb-4">AI Interview Prep</h2>
+        
+        {/* Error Message */}
+        {error && (
+          <div className="p-4 bg-red-50 border border-red-200 rounded-lg mb-6">
+            <div className="flex items-center">
+              <div className="text-red-600 mr-2">⚠️</div>
+              <div className="text-red-700">{error}</div>
+            </div>
+          </div>
+        )}
+
+        {/* Debug Info (remove in production) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg mb-6 text-sm">
+            <p><strong>Debug Info:</strong></p>
+            <p>Session Status: {status}</p>
+            <p>User Email: {session?.user?.email || 'Not loaded'}</p>
+            <p>User ID: {userId || 'Not loaded'}</p>
+            <p>Loading: {loading ? 'Yes' : 'No'}</p>
+          </div>
+        )}
+
+        {/* Resume Upload */}
+        <div className="p-4 bg-white rounded-lg shadow mb-6">
+          <label htmlFor="resume-upload" className="block mb-2 text-sm font-medium text-gray-700">
+            Upload Your Resume (PDF only)
+          </label>
+          <input
+            id="resume-upload"
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setResumeFile(e.target.files[0])}
+            className="w-full border rounded p-2"
+          />
+          <button
+            onClick={uploadResume}
+            disabled={isUploading || !resumeFile}
+            className="bg-indigo-600 text-white px-4 py-2 rounded mt-2 disabled:opacity-50 hover:bg-indigo-700 transition-colors"
+          >
+            {isUploading ? 'Uploading...' : 'Upload Resume'}
+          </button>
+          {uploadStatus && <p className="text-sm mt-2">{uploadStatus}</p>}
+        </div>
+        
+        {/* Job Description Input */}
+        <div className="p-4 bg-white rounded-lg shadow mb-6">
+          <label htmlFor="job-desc-file" className="block mb-2 text-sm font-medium text-gray-700">
+            Upload Job Description (PDF)
+          </label>
+          <input
+            id="job-desc-file"
+            type="file"
+            accept="application/pdf"
+            onChange={(e) => setJobDescriptionFile(e.target.files[0])}
+            className="w-full border rounded p-2"
+          />
+          <div className="my-4 text-center text-gray-500">OR</div>
+          <label htmlFor="job-desc" className="block mb-2 text-sm font-medium text-gray-700">
+            Paste Job Description Here
+          </label>
+          <textarea
+            id="job-desc"
+            rows="6"
+            className="w-full border rounded p-2 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            value={jobDescription}
+            onChange={(e) => setJobDescription(e.target.value)}
+            placeholder="Enter the job description to generate tailored interview questions..."
+            disabled={loading || !!jobDescriptionFile}
+          />
+          <div className="flex items-center justify-between mt-2">
+            <span className="text-sm text-gray-500">
+              {jobDescription.length} characters (minimum 50 required)
+            </span>
+            <button
+              onClick={generateQuestions}
+              disabled={loading || (!jobDescription.trim() && !jobDescriptionFile) || (jobDescription.trim() && jobDescription.length < 50 && !jobDescriptionFile) || !userId}
+              className="bg-blue-600 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-blue-700 transition-colors"
+            >
+              {loading ? 'Generating...' : 'Generate Questions'}
+            </button>
+          </div>
+        </div>
+
+        {/* Session Progress */}
+        {sessionState.isActive && (
+          <div className="p-4 bg-blue-50 border border-blue-200 rounded-lg mb-6">
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold text-blue-800">Interview Session Active</h3>
+                <p className="text-sm text-blue-600">
+                  Question {currentQuestionIndex + 1} of {questions.length}
+                </p>
+              </div>
+              <div className="text-right">
+                <p className="text-sm text-blue-600">
+                  Session Duration: {Math.floor((Date.now() - sessionState.startTime) / 60000)}m {Math.floor(((Date.now() - sessionState.startTime) % 60000) / 1000)}s
+                </p>
+              </div>
+            </div>
+            <div className="mt-2 bg-blue-200 rounded-full h-2">
+              <div 
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${((currentQuestionIndex + 1) / questions.length) * 100}%` }}
+              />
+            </div>
+          </div>
+        )}
+
+        {/* Questions Section */}
+        {questions.length > 0 && (
+          <div className="p-4 bg-white rounded-lg shadow">
+            <h3 className="font-semibold text-lg mb-2">
+              Question {currentQuestionIndex + 1} of {questions.length}
+            </h3>
+            <div className="p-4 bg-gray-50 rounded-lg mb-4">
+              <p className="text-gray-800">{questions[currentQuestionIndex]}</p>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {/* Text Answer Option */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-700">Option 1: Type Your Answer</h4>
+                <textarea
+                  rows="6"
+                  className="w-full border rounded p-3 focus:outline-none focus:ring-2 focus:ring-green-500"
+                  placeholder="Type your answer here..."
+                  value={userAnswer}
+                  onChange={(e) => setUserAnswer(e.target.value)}
+                  disabled={loading}
+                />
+                <button
+                  onClick={() => analyzeAnswer(userAnswer)}
+                  disabled={loading || !userAnswer.trim()}
+                  className="w-full bg-green-600 text-white px-4 py-2 rounded disabled:opacity-50 hover:bg-green-700 transition-colors"
+                >
+                  {loading ? 'Analyzing...' : 'Analyze My Answer'}
+                </button>
+              </div>
+
+              {/* Audio Recording Option */}
+              <div className="space-y-4">
+                <h4 className="font-semibold text-gray-700">Option 2: Record Your Answer</h4>
+                <div className="p-6 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
+                  <ReactMediaRecorder
+                    video
+                    audio
+                    onStop={processRecording}
+                    render={({ status, startRecording, stopRecording, previewStream }) => (
+                      <div className="space-y-5">
+                        <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden shadow-md">
+                          <VideoPreview stream={previewStream} />
+                          {status === 'recording' && (
+                            <div className="absolute top-3 right-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse flex items-center">
+                              <span className="w-2 h-2 bg-white rounded-full mr-2"></span> Recording
+                            </div>
+                          )}
+                          {status === 'idle' && !previewStream && (
+                            <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+                              Camera Preview
+                            </div>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-medium text-gray-700">Status: 
+                            <span className={`ml-2 px-3 py-1 rounded-full text-sm font-semibold ${
+                              status === 'recording' ? 'bg-red-100 text-red-800' :
+                              status === 'stopped' ? 'bg-green-100 text-green-800' :
+                              'bg-blue-100 text-blue-800'
+                            }`}>
+                              {status.charAt(0).toUpperCase() + status.slice(1)}
+                            </span>
+                          </span>
+                          {recordingState.isRecording && (
+                            <span className="text-sm text-gray-600">
+                              Duration: {Math.floor((Date.now() - recordingState.recordingStartTime) / 1000)}s
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex gap-3">
+                          <button 
+                            onClick={() => {
+                              startRecording();
+                              handleStartRecording();
+                            }}
+                            disabled={status === 'recording' || loading}
+                            className="flex-1 bg-red-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-red-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                              <path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v.75H15a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25H9.75A2.25 2.25 0 0 1 7.5 18.75V7.5H6.75A2.25 2.25 0 0 1 4.5 5.25v-.75ZM6 7.5v10.5c0 .414.336.75.75.75h.75V7.5H6Zm10.5 0v10.5c0 .414-.336.75-.75.75h-.75V7.5h.75Z" />
+                            </svg>
+                            <span>Start Recording</span>
+                          </button>
+                          <button 
+                            onClick={stopRecording}
+                            disabled={status !== 'recording' || loading}
+                            className="flex-1 bg-gray-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-gray-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                          >
+                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                              <path fillRule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clipRule="evenodd" />
+                            </svg>
+                            <span>Stop Recording</span>
+                          </button>
+                        </div>
+                        {transcription && (
+                          <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                            <h3 className="font-bold text-gray-800 mb-2">Transcription:</h3>
+                            <p className="text-gray-700 text-sm leading-relaxed">{transcription}</p>
+                            <button
+                              onClick={analyzeRecordedAnswer}
+                              disabled={loading || !transcription.trim()}
+                              className="w-full bg-purple-600 text-white px-4 py-2 rounded mt-4 disabled:opacity-50 hover:bg-purple-700 transition-colors"
+                            >
+                              {loading ? 'Analyzing...' : 'Analyze Recorded Answer'}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Navigation */}
+            <div className="flex justify-between items-center mt-6 pt-4 border-t">
+              <div className="text-sm text-gray-600">
+                {feedback ? '✓ Answer analyzed' : 'Provide an answer to continue'}
+              </div>
+              <button
+                onClick={nextQuestion}
+                disabled={!feedback || loading}
+                className="bg-blue-600 text-white px-6 py-2 rounded disabled:opacity-50 hover:bg-blue-700 transition-colors"
+              >
+                {currentQuestionIndex === questions.length - 1 ? 'Complete Session' : 'Next Question →'}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Feedback Section */}
+        {feedback && (
+          <div className="p-4 bg-green-50 border border-green-200 rounded-lg mt-6">
+            <h3 className="font-semibold text-green-800 mb-3">AI Feedback</h3>
+            <QuestionAnalytics data={feedback} />
+          </div>
+        )}
+
+        {/* Transcribing Indicator */}
+        {isTranscribing && <p className="text-sm text-gray-500 mt-4">Transcribing your answer...</p>}
+      </div>
+    </main>
+  );
+}

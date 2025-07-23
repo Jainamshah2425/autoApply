@@ -1,0 +1,66 @@
+# =============================================================================
+# GENERAL
+# =============================================================================
+
+# Environment variables
+# Never commit secrets, API keys, or local configuration
+.env
+.env.*
+*.env
+!.env.example
+
+# Log files
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS-generated files
+.DS_Store
+Thumbs.db
+._*
+
+# IDE & editor directories
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Temporary files
+r.txt
+
+# =============================================================================
+# FRONTEND (Next.js)
+# =============================================================================
+
+# Dependency directories
+frontend/node_modules/
+
+# Build output & cache
+frontend/.next/
+frontend/out/
+
+# =============================================================================
+# BACKEND (Node.js & FastAPI)
+# =============================================================================
+
+# Dependency directories
+backend/node_modules/
+
+# Python virtual environment
+backend/fastapi_service/tr/
+
+# Python cache
+backend/fastapi_service/__pycache__/
+
+# User-generated content (resumes, videos, etc.)
+backend/uploads/
+
+# Large AI/ML models that should not be in version control
+backend/vosk-model/
+models/
+
+# =============================================================================
