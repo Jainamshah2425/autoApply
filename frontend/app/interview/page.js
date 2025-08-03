@@ -63,6 +63,8 @@ export default function InterviewPrepPage() {
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [transcription, setTranscription] = useState('');
   const [recordedVideoMetrics, setRecordedVideoMetrics] = useState(null); // New state for video metrics
+  const [improvedAnswer, setImprovedAnswer] = useState('');
+  const [isGeneratingImprovedAnswer, setIsGeneratingImprovedAnswer] = useState(false);
 
   // Clear error after 5 seconds
   useEffect(() => {
@@ -100,72 +102,6 @@ export default function InterviewPrepPage() {
       setIsLoadingUser(false); // Also set to false if no session/email
     }
   }, [session]);
-
-  // const generateQuestions = useCallback(async () => {
-  //   setError('');
-    
-  //   // Validation
-  //   if (!jobDescription.trim()) {
-  //     setError('Please enter a job description');
-  //     return;
-  //   }
-
-  //   if (jobDescription.trim().length < 50) {
-  //     setError('Job description must be at least 50 characters long');
-  //     return;
-  //   }
-
-  //   if (!userId) {
-  //     setError('User profile not loaded. Please wait or refresh the page.');
-  //     return;
-  //   }
-
-  //   setLoading(true);
-    
-  //   try {
-  //     console.log('Generating questions for user:', userId); // Changed from _id to userId
-      
-  //     const res = await axios.post('http://localhost:5000/api/interview/generate-questions', {
-  //       jobDescription: jobDescription.trim(),
-  //       userId, // This is correct
-  //     });
-      
-  //     console.log('Questions generated:', res.data);
-      
-  //     // Ensure questions is an array before setting state
-  //     if (Array.isArray(res.data.questions)) {
-  //       setQuestions(res.data.questions);
-  //     } else {
-  //       console.error('Received questions data is not an array:', res.data.questions);
-  //       setQuestions([]); // Default to empty array to prevent errors
-  //       setError('Failed to load questions: Invalid data format.');
-  //     }
-  //     setCurrentQuestionIndex(0);
-  //     setFeedback(null);
-  //     setUserAnswer('');
-  //     setSessionComplete(false);
-  //     setSessionInsights(null);
-      
-  //     // Initialize session
-  //     setSessionState({
-  //       isActive: true,
-  //       startTime: Date.now(),
-  //       questionTimings: [],
-  //       overallMetrics: {},
-  //       sessionId: res.data.sessionId
-  //     });
-      
-  //     setError('');
-  //   } catch (err) {
-  //     console.error('Failed to generate questions:', err);
-  //     const errorMessage = err.response?.data?.message || err.response?.data?.error || 'An unexpected error occurred. Please try again.';
-  //     setError(errorMessage);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // },[jobDescription, userId]);
-
-
 
   // Add this enhanced debugging version to your page.js
 // Replace the generateQuestions function with this version:
@@ -320,13 +256,13 @@ const DebugInfo = () => {
     setError('');
     try {
       const formData = new FormData();
-      formData.append('video_file', blob, 'recording.webm');
+      formData.append('video', blob, 'recording.webm');
       formData.append('userId', userId);
       formData.append('sessionId', sessionState.sessionId);
       formData.append('questionIndex', currentQuestionIndex);
       formData.append('questionText', questions[currentQuestionIndex]);
 
-      const res = await axios.post('http://localhost:8000/analyze-video', formData, {
+      const res = await axios.post('http://localhost:8000/api/interview/analyze-video', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -467,7 +403,34 @@ const DebugInfo = () => {
       audioBlob: null,
       transcript: ''
     });
+    setImprovedAnswer('');
   }, []);
+
+  const generateImprovedAnswer = useCallback(async () => {
+    if (!userAnswer.trim()) {
+      setError('Please provide an answer to improve');
+      return;
+    }
+
+    setIsGeneratingImprovedAnswer(true);
+    setError('');
+
+    try {
+      const res = await axios.post('http://localhost:5000/api/llm/generate-improved-answer', {
+        question: questions[currentQuestionIndex],
+        userAnswer: userAnswer,
+        jobDescription: jobDescription,
+        userId: userId
+      });
+
+      setImprovedAnswer(res.data.improvedAnswer);
+    } catch (err) {
+      console.error('Failed to generate improved answer:', err);
+      setError('Failed to generate improved answer. Please try again.');
+    } finally {
+      setIsGeneratingImprovedAnswer(false);
+    }
+  }, [userAnswer, questions, currentQuestionIndex, jobDescription, userId]);
 
   const uploadResume = async () => {
     if (!resumeFile || !userId) {
@@ -819,6 +782,57 @@ const DebugInfo = () => {
           <div className="p-4 bg-green-50 border border-green-200 rounded-lg mt-6">
             <h3 className="font-semibold text-green-800 mb-3">AI Feedback</h3>
             <QuestionAnalytics data={feedback} />
+            
+            {/* AI-Enhanced Answer Generator */}
+            <div className="mt-6 pt-4 border-t border-green-200">
+              <div className="flex justify-between items-center mb-3">
+                <h3 className="font-semibold text-green-800">AI-Enhanced Answer Generator</h3>
+                <button
+                  onClick={generateImprovedAnswer}
+                  disabled={isGeneratingImprovedAnswer || !userAnswer.trim()}
+                  className="bg-indigo-600 text-white px-4 py-2 rounded hover:bg-indigo-700 transition-colors disabled:opacity-50"
+                >
+                  {isGeneratingImprovedAnswer ? (
+                    <span className="flex items-center">
+                      <svg className="animate-spin -ml-1 mr-2 h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                      </svg>
+                      Generating...
+                    </span>
+                  ) : (
+                    "Generate Improved Answer"
+                  )}
+                </button>
+              </div>
+              <p className="text-sm text-gray-600 mb-4">
+                Get an AI-enhanced version of  answer 
+              </p>
+              
+              {improvedAnswer && (
+                <div className="bg-white p-4 rounded-lg border border-green-200 shadow-sm">
+                  <div className="flex justify-between items-center mb-2">
+                    <h4 className="font-medium text-gray-800">Enhanced Answer</h4>
+                    <button 
+                      onClick={() => {
+                        navigator.clipboard.writeText(improvedAnswer);
+                        setError('Enhanced answer copied to clipboard!');
+                        setTimeout(() => setError(''), 3000);
+                      }}
+                      className="text-indigo-600 hover:text-indigo-800 text-sm font-medium flex items-center"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z" />
+                      </svg>
+                      Copy
+                    </button>
+                  </div>
+                  <div className="prose prose-sm max-w-none text-gray-700 whitespace-pre-wrap">
+                    {improvedAnswer}
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         )}
 

@@ -1,18 +1,11 @@
-fastapi
-uvicorn
-python-multipart
-faster-whisper
-opencv-python
-transformers
-torch
-ffmpeg-python
-pydub
-python-dotenv
-
-
+fastapi==0.103.1
+uvicorn==0.23.2
 python-multipart==0.0.6
-
-speechrecognition==3.8.1
-SpeechRencongition==3.8.1
 pydub==0.25.1
-python-form-data==0.0.3
+SpeechRecognition==3.8.1
+ffmpeg-python==0.2.0
+python-dotenv==1.0.0
+requests==2.31.0
+
+# For Sphinx (fallback speech recognition)
+pocketsphinx==0.1.15

@@ -7,6 +7,9 @@ const {
   transcribeAudio, 
   completeSession 
 } = require('../services/interviewService');
+const fastApiClient = require('../services/fastApiClient');
+const path = require('path');
+const fs = require('fs');
 const pdf = require('pdf-parse');
 
 // Configure multer for file uploads
@@ -19,8 +22,6 @@ const upload = multer({
 });
 
 const Bull = require('bull');
-const fs = require('fs');
-const path = require('path');
 
 // Create a queue for video processing
 const videoQueue = new Bull('video-processing', {
@@ -343,13 +344,13 @@ router.get('/sessions/user/:userId', async (req, res) => {
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
     const [sessions, total] = await Promise.all([
-      InterviewSession.find(find(query)
+      InterviewSession.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(parseInt(limit))
         .select('sessionId jobDescription questions responses sessionMetrics status createdAt completedAt'),
       InterviewSession.countDocuments(query)
-)]);
+    ]);
     
     res.json({
       success: true,
@@ -422,9 +423,10 @@ router.get('/stats/user/:userId', async (req, res) => {
     const { userId } = req.params;
     
     const InterviewSession = require('../models/InterviewSession');
+    const mongoose = require('mongoose');
     
     const stats = await InterviewSession.aggregate([
-      { $match: { user: require('mongoose').Types.ObjectId(userId) } },
+      { $match: { user: mongoose.Types.ObjectId(userId) } },
       {
         $group: {
           _id: null,
@@ -487,6 +489,39 @@ router.use((error, req, res, next) => {
     error: 'Internal server error',
     details: process.env.NODE_ENV === 'development' ? error.message : undefined
   });
+});
+
+// Analyze video for transcription
+router.post('/analyze-video', videoUpload.single('video'), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ error: 'No video file provided' });
+    }
+
+    console.log(`Processing video file: ${req.file.path}`);
+    console.log(`File size: ${req.file.size} bytes`);
+    
+    // Verify the file exists
+    if (!fs.existsSync(req.file.path)) {
+      return res.status(400).json({ error: 'Video file not found after upload' });
+    }
+
+    // Send the video to FastAPI for transcription
+    const result = await fastApiClient.analyzeVideo(req.file.path);
+    
+    // Return the transcription results
+    res.json({
+      success: true,
+      transcription: result.transcription,
+      requestId: result.request_id
+    });
+  } catch (error) {
+    console.error('Error analyzing video:', error);
+    res.status(500).json({ 
+      error: 'Failed to analyze video', 
+      details: error.message 
+    });
+  }
 });
 
 module.exports = router;
