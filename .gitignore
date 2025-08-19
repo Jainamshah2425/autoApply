@@ -49,7 +49,8 @@ frontend/out/
 
 # Dependency directories
 backend/node_modules/
-
+backend/events/
+backend/utils/
 # Python virtual environment
 backend/fastapi_service/tr/
 
@@ -62,5 +63,52 @@ backend/uploads/
 # Large AI/ML models that should not be in version control
 backend/vosk-model/
 models/
+
+# =============================================================================
+# TEST FILES & DEVELOPMENT ARTIFACTS
+# =============================================================================
+
+# Test files - various patterns
+test_*.js
+*_test.js
+*.test.js
+test_*.py
+*_test.py
+*.test.py
+
+# Specific test files
+comprehensive_*_test.*
+debug_*.js
+debug_*.py
+check_*.js
+test_oauth_config.js
+test_video_*.py
+
+# Documentation files (development-related)
+*_COMPLETE.md
+*_STATUS.md
+*_DOCS.md
+*_ARCHITECTURE.md
+*_REPORT.md
+*_FIX_COMPLETE.md
+BEHAVIORAL_*.md
+SENTIMENT_*.md
+HEATMAP_*.md
+PROFILE_*.md
+SESSION_*.md
+REALTIME_*.md
+
+# Development batch/start files
+start_app.bat
+*.bat
+
+# Temporary development files
+r.txt
+comprehensive_video_test.py
+
+# Analysis and debug logs
+analysis.log
+startup.log
+app.log
 
 # =============================================================================
