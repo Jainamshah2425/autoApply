@@ -53,7 +53,7 @@ backend/events/
 backend/utils/
 # Python virtual environment
 backend/fastapi_service/tr/
-
+frontend/app/interview/history/*
 # Python cache
 backend/fastapi_service/__pycache__/
 

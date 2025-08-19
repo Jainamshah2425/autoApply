@@ -105,115 +105,212 @@ export default function DashboardPage() {
   }
 
   return (
-    <main className="min-h-screen px-4 py-8 bg-gray-50">
+    <main className="min-h-screen bg-gray-50">
       <Header />
-      <div className="max-w-4xl mx-auto mt-8">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-2xl font-semibold">Job Scraper Dashboard</h2>
-          {/* <button
-            onClick={testConnection}
-            className="bg-green-600 text-white px-3 py-1 rounded text-sm"
-          >
-            Test Backend
-          </button> */}
+      <div className="container mx-auto px-4 py-8">
+        <div className="mb-8 animate-fadeIn">
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">Job Search Dashboard</h1>
+          <p className="text-gray-600">Discover and apply to your next opportunity with AI-powered precision</p>
         </div>
 
-        {/* 🔽 Domain selector */}
-        <div className="mb-6 p-4 bg-white rounded-lg shadow">
-          <label htmlFor="domain" className="block mb-2 text-sm font-medium text-gray-700">
-            Select domain to scrape:
-          </label>
-          <div className="flex gap-4 items-center">
-            <select
-              id="domain"
-              value={domain}
-              onChange={(e) => setDomain(e.target.value)}
-              className="border rounded p-2 flex-1"
-            >
-              <option value="web-development">Web Development</option>
-              <option value="data-science">Data Science</option>
-              <option value="machine-learning">Machine Learning</option>
-              <option value="marketing">Marketing</option>
-              <option value="ui-ux">UI/UX Design</option>
-              <option value="graphic-design">Graphic Design</option>
-              <option value="finance">Finance</option>
-              <option value="full-stack">Full Stack Development</option>
-              <option value="frontend">Frontend Development</option>
-              <option value="backend">Backend Development</option>
-            </select>
-            <Button
-              onClick={fetchJobs}
-              disabled={scrapeLoading}
-            >
-              {scrapeLoading ? 'Scraping...' : 'Scrape Jobs'}
-            </Button>
+        {/* Domain Selection Card */}
+        <div className="mb-8 animate-slideInLeft">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-200 p-6 hover:shadow-md transition-all duration-200">
+            <div className="flex items-center mb-4">
+              <span className="text-2xl mr-3">🎯</span>
+              <h2 className="text-xl font-semibold text-gray-900">Target Your Search</h2>
+            </div>
+            <p className="text-gray-600 mb-4">Select your preferred domain to find relevant opportunities</p>
+            
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-end">
+              <div className="flex-1">
+                <label htmlFor="domain" className="block text-sm font-medium text-gray-700 mb-2">
+                  Industry Domain
+                </label>
+                <select
+                  id="domain"
+                  value={domain}
+                  onChange={(e) => setDomain(e.target.value)}
+                  className="w-full border border-gray-300 rounded-lg px-4 py-3 focus:ring-2 focus:ring-primary/20 focus:border-primary transition-colors"
+                >
+                  <option value="web-development">🌐 Web Development</option>
+                  <option value="data-science">📊 Data Science</option>
+                  <option value="machine-learning">🤖 Machine Learning</option>
+                  <option value="marketing">📢 Marketing</option>
+                  <option value="ui-ux">🎨 UI/UX Design</option>
+                  <option value="graphic-design">🖼️ Graphic Design</option>
+                  <option value="finance">💰 Finance</option>
+                  <option value="full-stack">⚡ Full Stack Development</option>
+                  <option value="frontend">🎯 Frontend Development</option>
+                  <option value="backend">⚙️ Backend Development</option>
+                </select>
+              </div>
+              <Button
+                onClick={fetchJobs}
+                disabled={scrapeLoading}
+                className="enhanced-button"
+                size="lg"
+              >
+                {scrapeLoading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Searching...
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">🔍</span>
+                    Find Jobs
+                  </>
+                )}
+              </Button>
+            </div>
           </div>
         </div>
 
-        {/* 📊 Scrape Information
-        {scrapeInfo && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-lg">
-            <h3 className="font-semibold text-green-800 mb-2">Scrape Results</h3>
-            <p className="text-sm text-green-700">
-              Found <strong>{scrapeInfo.count}</strong> jobs for <strong>{scrapeInfo.domain}</strong>
-            </p>
-            <p className="text-xs text-green-600 mt-1">
-              URL: {scrapeInfo.url}
-            </p>
-          </div>
-        )} */}
-
-        {/* ❌ Error Display */}
+        {/* Error Display */}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-lg">
-            <h3 className="font-semibold text-red-800 mb-2">Error</h3>
-            <p className="text-sm text-red-700">{error}</p>
+          <div className="mb-6 animate-slideInRight">
+            <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+              <div className="flex items-center">
+                <span className="text-red-500 text-xl mr-3">⚠️</span>
+                <div>
+                  <h3 className="font-semibold text-red-800">Search Error</h3>
+                  <p className="text-red-700 text-sm">{error}</p>
+                </div>
+              </div>
+            </div>
           </div>
         )}
 
-        {/* 🛠️ Auto Apply Button */}
-        <div className="mb-6">
-          <Button
-            onClick={autoApply}
-            disabled={!userId || loading || jobs.length === 0}
-          >
-            {loading ? 'Applying...' : `Auto-Apply to ${jobs.length} Jobs`}
-          </Button>
-          {!userId && (
-            <p className="text-sm text-gray-500 mt-2">
-              Waiting for user data to load...
-            </p>
-          )}
+        {/* Auto Apply Section */}
+        <div className="mb-8 animate-slideInRight">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
+              <div className="mb-4 sm:mb-0">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">Ready to Apply?</h3>
+                <p className="text-gray-600">
+                  {jobs.length > 0 
+                    ? `Apply to all ${jobs.length} relevant positions with one click`
+                    : 'Search for jobs first, then apply automatically'
+                  }
+                </p>
+                {!userId && (
+                  <p className="text-sm text-amber-600 mt-1">⏳ Loading user profile...</p>
+                )}
+              </div>
+              <Button
+                onClick={autoApply}
+                disabled={!userId || loading || jobs.length === 0}
+                size="lg"
+                className="enhanced-button bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700"
+              >
+                {loading ? (
+                  <>
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    Applying...
+                  </>
+                ) : (
+                  <>
+                    <span className="mr-2">🚀</span>
+                    Auto-Apply ({jobs.length})
+                  </>
+                )}
+              </Button>
+            </div>
+          </div>
         </div>
 
-        {/* 📋 Jobs List */}
+        {/* Jobs List */}
         {scrapeLoading ? (
-          <div className="text-center py-8">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-indigo-600 mx-auto"></div>
-            <p className="mt-2 text-gray-600">Scraping jobs...</p>
-          </div>
-        ) : jobs.length > 0 ? (
           <div className="space-y-4">
-            <h3 className="text-lg font-semibold">Found {jobs.length} Jobs</h3>
-            {jobs.map((job, i) => (
-              <div key={i} className="p-4 border rounded-lg shadow bg-white">
-                <h4 className="font-bold text-lg">{job.title}</h4>
-                <p className="text-gray-700">{job.company}</p>
-                <p className="text-sm text-gray-500">{job.location}</p>
-                <a 
-                  href={job.url} 
-                  target="_blank" 
-                  rel="noreferrer" 
-                  className="text-blue-600 underline hover:text-blue-800"
-                >
-                  View Details →
-                </a>
+            <div className="text-center py-8">
+              <div className="inline-flex items-center">
+                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary mr-3"></div>
+                <span className="text-lg text-gray-600">Discovering opportunities...</span>
+              </div>
+            </div>
+            {/* Skeleton cards */}
+            {[...Array(3)].map((_, i) => (
+              <div key={i} className="animate-shimmer bg-white rounded-xl border border-gray-200 p-6">
+                <div className="h-6 bg-gray-200 rounded w-3/4 mb-3"></div>
+                <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                <div className="h-4 bg-gray-200 rounded w-2/3"></div>
               </div>
             ))}
           </div>
+        ) : jobs.length > 0 ? (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <h3 className="text-2xl font-semibold text-gray-900">
+                Found {jobs.length} Opportunities
+              </h3>
+              <div className="text-sm text-gray-500">
+                💡 Tip: Review each position before applying
+              </div>
+            </div>
+            
+            <div className="grid gap-6">
+              {jobs.map((job, i) => (
+                <div 
+                  key={i} 
+                  className="bg-white rounded-xl border border-gray-200 p-6 hover:shadow-lg hover:border-primary/20 transition-all duration-300 animate-scaleIn"
+                  style={{ animationDelay: `${i * 0.1}s` }}
+                >
+                  <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between">
+                    <div className="flex-1">
+                      <h4 className="text-xl font-semibold text-gray-900 mb-2">{job.title}</h4>
+                      <div className="flex items-center text-gray-600 mb-3 space-x-4">
+                        <div className="flex items-center">
+                          <span className="mr-1">🏢</span>
+                          <span className="font-medium">{job.company}</span>
+                        </div>
+                        <div className="flex items-center">
+                          <span className="mr-1">📍</span>
+                          <span>{job.location}</span>
+                        </div>
+                      </div>
+                      {job.description && (
+                        <p className="text-gray-600 text-sm line-clamp-2 mb-3">
+                          {job.description}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex flex-col sm:flex-row gap-3 mt-4 sm:mt-0 sm:ml-6">
+                      <Button variant="outline" size="sm" className="enhanced-button">
+                        <span className="mr-1">👁️</span>
+                        Preview
+                      </Button>
+                      <Button 
+                        asChild
+                        size="sm"
+                        className="enhanced-button"
+                      >
+                        <a 
+                          href={job.url} 
+                          target="_blank" 
+                          rel="noreferrer"
+                        >
+                          <span className="mr-1">🔗</span>
+                          View Details
+                        </a>
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
         ) : (
-          <div className="text-center py-8 text-gray-500">
-            No jobs found. Try selecting a different domain or check for errors above.
+          <div className="text-center py-16 animate-fadeIn">
+            <div className="text-6xl mb-4">🔍</div>
+            <h3 className="text-xl font-semibold text-gray-900 mb-2">No Jobs Found</h3>
+            <p className="text-gray-600 mb-6">
+              Try selecting a different domain or check back later for new opportunities.
+            </p>
+            <Button onClick={fetchJobs} variant="outline" className="enhanced-button">
+              <span className="mr-2">🔄</span>
+              Refresh Search
+            </Button>
           </div>
         )}
       </div>

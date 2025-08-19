@@ -3,6 +3,11 @@ import cv2
 import numpy as np
 import mediapipe as mp
 from scipy.spatial.transform import Rotation as R
+import json
+from datetime import datetime, timedelta
+import logging
+
+logger = logging.getLogger(__name__)
 
 # Get the absolute path to the model file
 model_path = os.path.join(os.path.dirname(__file__), 'models', 'emotion-ferplus-8.onnx')
@@ -52,6 +57,8 @@ def get_gaze_direction(landmarks, frame_shape):
         return "Looking Right"
     elif angles[0] < -15:
         return "Looking Down"
+    elif angles[0] > 15:
+        return "Looking Up"
     else:
         return "Forward"
 
@@ -92,7 +99,7 @@ def is_speaking(landmarks):
     Args:
         landmarks: Facial landmarks from MediaPipe.
     Returns:
-        A boolean indicating if speaking is detected.
+        A float indicating the degree of mouth opening (higher = more open).
     """
     upper_lip_pts = [61, 185, 40, 39, 37, 0, 267, 269, 270, 409, 291]
     lower_lip_pts = [61, 146, 91, 181, 84, 17, 314, 405, 321, 375, 291]
@@ -101,7 +108,7 @@ def is_speaking(landmarks):
     lower_lip_mean = np.mean([(landmarks.landmark[p].x, landmarks.landmark[p].y) for p in lower_lip_pts], axis=0)
     
     distance = np.linalg.norm(upper_lip_mean - lower_lip_mean)
-    return distance > 0.04
+    return distance
 
 def analyze_video(video_path):
     """
@@ -172,12 +179,11 @@ def analyze_video(video_path):
                 
                 emotion_model.setInput(processed_face)
                 emotion_preds = emotion_model.forward()
-                emotion_idx = np.argmax(emotion_preds)
-                results["emotions"].append(EMOTIONS[emotion_idx])
+                emotion_index = np.argmax(emotion_preds)
+                emotion = EMOTIONS[emotion_index] if emotion_index < len(EMOTIONS) else "neutral"
+                results["emotions"].append(emotion)
 
     cap.release()
-    cv2.destroyAllWindows()
-    del cap
     
     results["blinks"] = blink_counter
     results["speaking_frames"] = speaking_counter

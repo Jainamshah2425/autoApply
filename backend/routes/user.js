@@ -6,6 +6,8 @@ const multer = require('multer');
 const pdfParse = require('pdf-parse');
 const fs = require('fs');
 const path = require('path');
+const { seedUserProfileData } = require('../utils/seedUserData');
+const { syncUserStats } = require('../services/userStatsService');
 
 // Configure multer with file validation
 const storage = multer.diskStorage({
@@ -97,6 +99,25 @@ router.post('/upload-resume', (req, res) => {
         return res.status(404).json({ error: 'User not found' });
       }
 
+      // Track resume upload activity using HeatmapService
+      try {
+        const HeatmapService = require('../services/heatmapService');
+        
+        const activityDetails = {
+          description: 'Uploaded resume document',
+          metadata: {
+            fileName: req.file?.originalname || 'resume.pdf',
+            fileSize: req.file?.size || 0,
+            uploadPath: filename
+          }
+        };
+
+        await HeatmapService.addActivity(userId, 'resume_upload', activityDetails);
+      } catch (trackingError) {
+        console.warn('Resume upload tracking failed:', trackingError);
+        // Don't fail the upload if tracking fails
+      }
+
       console.log('Resume uploaded successfully for user:', userId);
       res.json({ 
         success: true, 
@@ -131,6 +152,206 @@ router.get('/by-email/:email', async (req, res) => {
   }
 });
 
+// GET /api/user/contributions/:userId - Return user's activity data
+router.get('/contributions/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { start, end } = req.query;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let contributions = user.contributions || [];
+
+    // Filter by date range if provided
+    if (start && end) {
+      const startDate = new Date(start).toISOString().split('T')[0];
+      const endDate = new Date(end).toISOString().split('T')[0];
+      
+      contributions = contributions.filter(contrib => 
+        contrib.date >= startDate && contrib.date <= endDate
+      );
+    }
+
+    res.json(contributions);
+  } catch (error) {
+    console.error('Error fetching contributions:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/user/stats/:userId - Return user stats
+router.get('/stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Return stats with defaults if not set
+    const stats = {
+      totalInterviews: user.stats?.totalInterviews || 0,
+      totalQuestions: user.stats?.totalQuestions || 0,
+      averageScore: user.stats?.averageScore || 0,
+      improvementRate: user.stats?.improvementRate || 0,
+      totalVideoTime: user.stats?.totalVideoTime || 0,
+      level: user.stats?.level || 1,
+      experiencePoints: user.stats?.experiencePoints || 0,
+      nextLevelPoints: user.stats?.nextLevelPoints || 1000,
+      weeklyGoal: user.stats?.weeklyGoal || 5,
+      weeklyProgress: user.stats?.weeklyProgress || 0,
+      currentStreak: user.stats?.currentStreak || 0,
+      longestStreak: user.stats?.longestStreak || 0,
+      favoriteTopics: user.stats?.favoriteTopics || [],
+      recentAchievements: user.stats?.recentAchievements || [],
+      skillProgress: user.stats?.skillProgress || {}
+    };
+
+    res.json(stats);
+  } catch (error) {
+    console.error('Error fetching user stats:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/user/profile/:userId - Update user profile fields
+router.put('/profile/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const updateFields = req.body;
+
+    // Filter out fields that shouldn't be updated directly
+    const allowedFields = [
+      'fullName', 'username', 'bio', 'location', 'website', 
+      'professionalBackground', 'profilePicture', 'phone', 
+      'linkedIn', 'github', 'currentTitle', 'company'
+    ];
+
+    const filteredUpdates = {};
+    Object.keys(updateFields).forEach(key => {
+      if (allowedFields.includes(key)) {
+        filteredUpdates[key] = updateFields[key];
+      }
+    });
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      filteredUpdates,
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ success: true, user });
+  } catch (error) {
+    console.error('Error updating profile:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// PUT /api/user/privacy/:userId - Save privacy settings
+router.put('/privacy/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const privacySettings = req.body;
+
+    const user = await User.findByIdAndUpdate(
+      userId,
+      { 'settings.privacy': privacySettings },
+      { new: true, runValidators: true }
+    );
+
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    res.json({ success: true, privacy: user.settings.privacy });
+  } catch (error) {
+    console.error('Error updating privacy settings:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Helper endpoint to add contribution data
+router.post('/add-contribution/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { type, description } = req.body;
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Find or create today's contribution entry
+    const existingContribution = user.contributions.find(c => c.date === today);
+    
+    if (existingContribution) {
+      existingContribution.count += 1;
+      existingContribution.activities.push({
+        type,
+        description,
+        timestamp: new Date()
+      });
+    } else {
+      user.contributions.push({
+        date: today,
+        count: 1,
+        activities: [{
+          type,
+          description,
+          timestamp: new Date()
+        }]
+      });
+    }
+
+    await user.save();
+    res.json({ success: true, message: 'Contribution added' });
+  } catch (error) {
+    console.error('Error adding contribution:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Helper endpoint to update user stats
+router.post('/update-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const statsUpdate = req.body;
+
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    // Initialize stats if not present
+    if (!user.stats) {
+      user.stats = {};
+    }
+
+    // Update stats
+    Object.keys(statsUpdate).forEach(key => {
+      if (user.stats[key] !== undefined || statsUpdate[key] !== undefined) {
+        user.stats[key] = statsUpdate[key];
+      }
+    });
+
+    await user.save();
+    res.json({ success: true, stats: user.stats });
+  } catch (error) {
+    console.error('Error updating stats:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 router.post('/set-preferences', async (req, res) => {
   try {
     const { userId, preferences } = req.body;
@@ -153,6 +374,30 @@ router.post('/set-preferences', async (req, res) => {
   } catch (error) {
     console.error('Error setting preferences:', error);
     res.status(500).json({ error: 'Internal server error' });
+  }
+});
+
+// Development endpoint to seed sample data for testing
+router.post('/seed-sample-data/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const result = await seedUserProfileData(userId);
+    res.json(result);
+  } catch (error) {
+    console.error('Error seeding sample data:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Sync user stats from interview sessions and video analysis
+router.post('/sync-stats/:userId', async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const stats = await syncUserStats(userId);
+    res.json({ success: true, stats });
+  } catch (error) {
+    console.error('Error syncing user stats:', error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

@@ -12,6 +12,7 @@ from typing import Optional, Dict, Any
 import subprocess
 import sys
 import uuid
+from datetime import datetime
 
 # Configure logging with more detailed format
 logging.basicConfig(
@@ -359,7 +360,7 @@ async def analyze_video_endpoint(
     questionText: str = Form(...)
 ):
     """
-    Analyzes a video file to extract behavioral metrics and transcription.
+    Analyzes a video file to extract transcription and basic metrics.
     """
 
     logger.info(f"=== NEW VIDEO ANALYSIS REQUEST ===")
@@ -406,7 +407,7 @@ async def analyze_video_endpoint(
             transcription = "Could not extract or transcribe audio"
 
         # Step 3: Analyze video
-        logger.info("Step 3: Analyzing video for behavioral metrics...")
+        logger.info("Step 3: Analyzing video for basic metrics...")
         try:
             from analysis import analyze_video
             analysis_results = analyze_video(temp_video_path)
@@ -430,7 +431,6 @@ async def analyze_video_endpoint(
                 "total_blinks": 0,
                 "total_frames": 0,
                 "speaking_frames": 0,
-                "confidence_score": 0,
                 "engagement_score": 0,
                 "error": analysis_results["error"]
             }
@@ -461,7 +461,6 @@ async def analyze_video_endpoint(
                 "total_blinks": analysis_results.get("blinks", 0),
                 "total_frames": total_frames,
                 "speaking_frames": speaking_frames,
-                "confidence_score": 85.0,
                 "engagement_score": min(100, speaking_percentage + (100 - blinks_per_minute * 2)),
             }
 
@@ -504,6 +503,19 @@ async def analyze_video_endpoint(
                     logger.info(f"Deleted temporary file: {path}")
                 except Exception as e:
                     logger.warning(f"Could not delete temporary file {path}: {e}")
+
+def get_video_duration(video_path):
+    """Get video duration in seconds"""
+    try:
+        import cv2
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+        frame_count = cap.get(cv2.CAP_PROP_FRAME_COUNT)
+        duration = frame_count / fps if fps > 0 else 0
+        cap.release()
+        return duration
+    except:
+        return 30  # Default fallback duration
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):

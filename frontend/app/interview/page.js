@@ -262,28 +262,36 @@ const DebugInfo = () => {
       formData.append('questionIndex', currentQuestionIndex);
       formData.append('questionText', questions[currentQuestionIndex]);
 
-      const res = await axios.post('http://localhost:8000/api/interview/analyze-video', formData, {
+      // Use the Express backend endpoint for video transcription
+      const res = await axios.post('http://localhost:5000/api/interview/analyze-video', formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
-        timeout: 120000,
+        timeout: 180000, // 3 minutes for video processing
       });
       
       setTranscription(res.data.transcription);
-      setUserAnswer(res.data.transcription); // Update the user's answer with transcription
-      setRecordedVideoMetrics(res.data.videoAnalysis); // Store video analysis
-
-      setError(''); // Clear any previous errors
+      setUserAnswer(res.data.transcription);
+      setRecordedVideoMetrics(res.data.video_metrics);
+      
+      setError('');
       
     } catch (error) {
-      console.error('Error in processRecording (FastAPI call):', error);
-      if (error.response) {
-        setError(`Recording processing failed: ${error.response.data.detail || error.response.data.error || 'Server error'}`);
-      } else if (error.request) {
-        setError('Recording processing failed: No response from FastAPI server');
+      console.error('Error in processRecording:', error);
+      
+      let errorMessage = 'Failed to process your recording. ';
+      
+      if (error.code === 'ECONNABORTED' || error.message.includes('timeout')) {
+        errorMessage += 'The analysis took too long. Please try with a shorter recording.';
+      } else if (error.response?.status === 422) {
+        errorMessage += 'Invalid video format. Please try recording again.';
+      } else if (error.response?.data?.detail) {
+        errorMessage += error.response.data.detail;
       } else {
-        setError('Recording processing failed: Network error');
+        errorMessage += 'Please check your connection and try again.';
       }
+      
+      setError(errorMessage);
     } finally {
       setIsTranscribing(false);
     }
@@ -326,7 +334,23 @@ const DebugInfo = () => {
 
     } catch (err) {
       console.error('Failed to analyze recorded answer:', err);
-      setError('Failed to analyze recorded answer. Please try again.');
+      console.error('Error details:', {
+        message: err.message,
+        response: err.response?.data,
+        status: err.response?.status,
+        statusText: err.response?.statusText
+      });
+      
+      let errorMessage = 'Failed to analyze recorded answer. ';
+      if (err.response?.data?.error) {
+        errorMessage += err.response.data.error;
+      } else if (err.response?.data?.details) {
+        errorMessage += err.response.data.details;
+      } else {
+        errorMessage += 'Please try again.';
+      }
+      
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
@@ -374,6 +398,39 @@ const DebugInfo = () => {
       setSessionInsights(res.data.insights);
       setSessionComplete(true);
       setSessionState(prev => ({ ...prev, isActive: false }));
+      
+      // Handle heatmap update response
+      if (res.data.heatmapUpdate?.success) {
+        console.log('✅ Heatmap updated successfully:', res.data.heatmapUpdate);
+        
+        // Optional: Show success message about activity tracking
+        if (res.data.heatmapUpdate.contributionAdded) {
+          console.log('🔥 New activity added to your heatmap!');
+        }
+        
+        // Optional: Trigger real-time refresh if user is on profile page
+        // This would require implementing a WebSocket or polling mechanism
+        // For now, we'll use localStorage to signal profile page to refresh
+        try {
+          const heatmapUpdateEvent = {
+            timestamp: Date.now(),
+            type: 'interview_completed',
+            date: res.data.heatmapUpdate.date || new Date().toISOString().split('T')[0],
+            userId: userId
+          };
+          localStorage.setItem('heatmapUpdate', JSON.stringify(heatmapUpdateEvent));
+          
+          // Dispatch custom event for real-time updates
+          window.dispatchEvent(new CustomEvent('heatmapUpdated', { 
+            detail: heatmapUpdateEvent 
+          }));
+        } catch (storageError) {
+          console.warn('Failed to store heatmap update event:', storageError);
+        }
+      } else {
+        console.warn('⚠️ Heatmap update failed:', res.data.heatmapUpdate);
+      }
+      
     } catch (err) {
       console.error('Failed to complete session:', err);
       setError('Failed to complete session. Please try again.');
@@ -835,6 +892,8 @@ const DebugInfo = () => {
             </div>
           </div>
         )}
+
+        {/* Session completed */}
 
         {/* Transcribing Indicator */}
         {isTranscribing && <p className="text-sm text-gray-500 mt-4">Transcribing your answer...</p>}

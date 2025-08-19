@@ -72,8 +72,19 @@ router.post('/upload-video', videoUpload.single('video'), async (req, res) => {
 
     // Save video metadata to the database
     const Video = require('../models/Video');
+    const User = require('../models/User');
+    const mongoose = require('mongoose');
+    
+    // Validate userId is a valid ObjectId
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ 
+        error: 'Invalid userId format. Must be a valid MongoDB ObjectId.' 
+      });
+    }
+    
     const newVideo = new Video({
-      user: userId,
+      userId: new mongoose.Types.ObjectId(userId),
+      user: new mongoose.Types.ObjectId(userId),
       interviewSession: sessionId,
       questionIndex,
       filePath: req.file.path,
@@ -81,6 +92,26 @@ router.post('/upload-video', videoUpload.single('video'), async (req, res) => {
       duration,
     });
     await newVideo.save();
+
+    // Track activity in user's contribution heatmap using HeatmapService
+    try {
+      const HeatmapService = require('../services/heatmapService');
+      
+      const activityDetails = {
+        description: `Uploaded video for question ${parseInt(questionIndex) + 1}`,
+        metadata: {
+          questionIndex: questionIndex,
+          duration: duration,
+          videoId: newVideo._id.toString(),
+          sessionId: sessionId
+        }
+      };
+
+      await HeatmapService.addActivity(userId, 'video_upload', activityDetails);
+    } catch (trackingError) {
+      console.warn('Activity tracking failed:', trackingError);
+      // Don't fail the video upload if tracking fails
+    }
 
     // Add video to the processing queue
     await videoQueue.add({ videoId: newVideo._id });
@@ -137,6 +168,7 @@ router.post('/generate-questions', upload.single('jobDescriptionFile'), async (r
       success: true,
       questions: result.questions,
       sessionId: result.sessionId,
+      persisted: result.persisted !== undefined ? result.persisted : true,
       questionCount: result.questions.length
     };
     
@@ -158,21 +190,33 @@ router.post('/generate-questions', upload.single('jobDescriptionFile'), async (r
  */
 router.post('/analyze-answer', async (req, res) => {
   try {
+    console.log('=== ANALYZE ANSWER ENDPOINT ===');
+    console.log('Request body:', {
+      question: req.body.question?.substring(0, 100) + '...',
+      answer: req.body.answer?.substring(0, 100) + '...',
+      audioMetrics: req.body.audioMetrics,
+      sessionId: req.body.sessionId,
+      questionIndex: req.body.questionIndex
+    });
+
     const { question, answer, audioMetrics, sessionId, questionIndex } = req.body;
 
     // Validation
     if (!question || !answer) {
+      console.error('Validation failed: Missing question or answer');
       return res.status(400).json({ 
         error: 'Question and answer are required' 
       });
     }
 
     if (answer.trim().length < 10) {
+      console.error('Validation failed: Answer too short');
       return res.status(400).json({ 
         error: 'Answer must be at least 10 characters long' 
       });
     }
 
+    console.log('Calling analyzeAnswer service...');
     const analysis = await analyzeAnswer(
       question, 
       answer, 
@@ -181,6 +225,7 @@ router.post('/analyze-answer', async (req, res) => {
       questionIndex
     );
     
+    console.log('Analysis completed successfully');
     res.json({
       success: true,
       ...analysis,
@@ -189,9 +234,10 @@ router.post('/analyze-answer', async (req, res) => {
 
   } catch (error) {
     console.error('Error in /analyze-answer:', error);
+    console.error('Error stack:', error.stack);
     res.status(500).json({ 
       error: 'Failed to analyze answer',
-      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+      details: process.env.NODE_ENV === 'development' ? error.message : 'Internal server error'
     });
   }
 });
@@ -260,6 +306,11 @@ router.post('/complete-session', async (req, res) => {
   try {
     const { sessionId, userId, questionTimings } = req.body;
 
+    console.log('=== COMPLETE SESSION DEBUG ===');
+    console.log('Received sessionId:', sessionId);
+    console.log('Received userId:', userId);
+    console.log('SessionId type:', typeof sessionId);
+
     // Validation
     if (!sessionId || !userId) {
       return res.status(400).json({ 
@@ -268,11 +319,45 @@ router.post('/complete-session', async (req, res) => {
     }
 
     const result = await completeSession(sessionId, userId, questionTimings);
+
+    // Enhanced heatmap tracking using HeatmapService
+    let heatmapUpdateResult = null;
+    try {
+      const HeatmapService = require('../services/heatmapService');
+      
+      // Prepare activity details for heatmap
+      const activityDetails = {
+        description: `Completed mock interview session (${result.insights?.metrics?.totalQuestions || 0} questions)`,
+        metadata: {
+          sessionId: sessionId,
+          questionsAnswered: result.insights?.metrics?.completedQuestions || 0,
+          totalQuestions: result.insights?.metrics?.totalQuestions || 0,
+          averageScore: result.insights?.metrics?.averageScore || 0,
+          duration: result.insights?.metrics?.totalDuration || 0,
+          completionRate: result.insights?.metrics?.completionRate || 0
+        },
+        questionsAnswered: result.insights?.metrics?.completedQuestions || 0,
+        averageScore: result.insights?.metrics?.averageScore || 0,
+        completionRate: result.insights?.metrics?.completionRate || 0
+      };
+
+      heatmapUpdateResult = await HeatmapService.addActivity(userId, 'interview_completed', activityDetails);
+      console.log(`✅ Heatmap updated for user ${userId} - Interview completed`);
+      
+    } catch (trackingError) {
+      console.error('❌ Heatmap tracking failed:', trackingError);
+      // Don't fail the session completion if tracking fails
+      heatmapUpdateResult = { success: false, error: trackingError.message };
+    }
     
     res.json({
       success: true,
       insights: result.insights,
-      message: 'Session completed successfully'
+      message: 'Session completed successfully',
+      heatmapUpdate: heatmapUpdateResult || {
+        success: false,
+        message: 'Heatmap update failed but session completed'
+      }
     });
 
   } catch (error) {

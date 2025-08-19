@@ -18,6 +18,7 @@ export default function Header() {
         <Link href="/upload">Upload</Link>
         <Link href="/dashboard">Dashboard</Link>
         <Link href="/interview">Interview</Link>
+        <Link href="/profile">Profile</Link>
         
         {isMounted && session ? (
           <>

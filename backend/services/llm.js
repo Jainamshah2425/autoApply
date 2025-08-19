@@ -9,6 +9,14 @@ async function getLLMResponse(prompt) {
   const systemPrompt = `You are a helpful AI assistant.`; // A generic system prompt
 
   try {
+    console.log('=== LLM SERVICE CALL ===');
+    console.log('Prompt length:', prompt?.length);
+    const hasKey = !!process.env.GROQ_API_KEY;
+    console.log('API Key present:', hasKey);
+    if (!hasKey) {
+      throw new Error('Missing GROQ_API_KEY environment variable');
+    }
+
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
       {
@@ -23,12 +31,37 @@ async function getLLMResponse(prompt) {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
           'Content-Type': 'application/json',
         },
+        timeout: 30000 // 30 second timeout
       }
     );
-    return response.data.choices[0].message.content;
+
+    console.log('LLM API response status:', response.status);
+    console.log('Response data structure:', {
+      hasChoices: !!response.data.choices,
+      choicesLength: response.data.choices?.length,
+      hasMessage: !!response.data.choices?.[0]?.message,
+      messageLength: response.data.choices?.[0]?.message?.content?.length
+    });
+
+  return response.data.choices[0].message.content;
   } catch (error) {
-    console.error('Error calling LLM API:', error.response?.data || error.message);
-    throw new Error('Failed to get response from LLM.');
+    console.error('=== LLM API ERROR ===');
+    console.error('Error type:', error.constructor.name);
+    console.error('Error message:', error.message);
+    
+    if (error.response) {
+      console.error('Response status:', error.response.status);
+      console.error('Response data:', error.response.data);
+      console.error('Response headers:', error.response.headers);
+    } else if (error.request) {
+      console.error('Request made but no response received');
+      console.error('Request details:', error.request);
+    } else {
+      console.error('Error setting up request:', error.message);
+    }
+    
+  const reason = error.response?.data?.error?.message || error.message || 'Unknown LLM error';
+  throw new Error(`LLM API failed: ${reason}`);
   }
 }
 
