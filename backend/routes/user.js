@@ -43,6 +43,66 @@ const upload = multer({
 
 const router = express.Router();
 
+// POST /api/user/create - Create a new user
+router.post('/create', async (req, res) => {
+  try {
+    const { email, name, image } = req.body;
+    
+    if (!email) {
+      return res.status(400).json({ error: 'Email is required' });
+    }
+    
+    // Check if user already exists
+    const existingUser = await User.findOne({ email });
+    if (existingUser) {
+      return res.json(existingUser);
+    }
+    
+    // Create new user with default values
+    const newUser = new User({
+      email,
+      name: name || email.split('@')[0],
+      image: image || null,
+      stats: {
+        level: 1,
+        xp: 0,
+        interviewsCompleted: 0,
+        averageScore: 0,
+        totalPracticeTime: 0,
+        improvementRate: 0,
+        currentStreak: 0,
+        longestStreak: 0
+      },
+      preferences: {
+        notifications: {
+          email: true,
+          push: true,
+          dailyReminders: false,
+          weeklyReports: true
+        },
+        privacy: {
+          showEmail: true,
+          showLocation: true,
+          showSocialLinks: true,
+          showContributions: true,
+          showStats: true,
+          showAchievements: true
+        }
+      },
+      contributions: [],
+      achievements: []
+    });
+    
+    const savedUser = await newUser.save();
+    console.log('✅ New user created:', savedUser.email);
+    
+    res.status(201).json(savedUser);
+  } catch (error) {
+    console.error('❌ Failed to create user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
 router.post('/upload-resume', (req, res) => {
   upload.single('resume')(req, res, async (err) => {
     if (err) {

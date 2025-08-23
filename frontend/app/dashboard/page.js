@@ -183,7 +183,7 @@ export default function DashboardPage() {
         )}
 
         {/* Auto Apply Section */}
-        <div className="mb-8 animate-slideInRight">
+        {/* <div className="mb-8 animate-slideInRight">
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl border border-blue-200 p-6">
             <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between">
               <div className="mb-4 sm:mb-0">
@@ -218,7 +218,7 @@ export default function DashboardPage() {
               </Button>
             </div>
           </div>
-        </div>
+        </div> */}
 
         {/* Jobs List */}
         {scrapeLoading ? (

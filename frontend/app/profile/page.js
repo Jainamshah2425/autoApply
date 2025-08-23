@@ -117,13 +117,49 @@ export default function ProfilePage() {
 
   const loadUserProfile = async () => {
     try {
+      setError(null); // Clear any previous errors
+      console.log('Loading user profile for:', session.user.email);
+      
       const response = await axios.get(
-        `http://localhost:5000/api/user/by-email/${session.user.email}`
+        `http://localhost:5000/api/user/by-email/${session.user.email}`,
+        {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
       );
+      
+      console.log('User profile loaded successfully:', response.data);
       setUserProfile(response.data);
     } catch (err) {
       console.error('Failed to load user profile:', err);
-      setError('Failed to load profile information');
+      
+      // More specific error handling
+      if (err.code === 'ECONNREFUSED') {
+        setError('Backend server is not running. Please start the backend on port 5000.');
+      } else if (err.response?.status === 404) {
+        // User not found, try to create them
+        console.log('User not found, attempting to create...');
+        try {
+          const createResponse = await axios.post('http://localhost:5000/api/user/create', {
+            email: session.user.email,
+            name: session.user.name,
+            image: session.user.image
+          });
+          console.log('User created successfully:', createResponse.data);
+          setUserProfile(createResponse.data.user);
+        } catch (createErr) {
+          console.error('Failed to create user:', createErr);
+          setError('Failed to create user profile. Please check your connection.');
+        }
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again later.');
+      } else if (err.code === 'ENOTFOUND' || err.message.includes('Network Error')) {
+        setError('Network error. Please check your internet connection and ensure the backend is running.');
+      } else {
+        setError(`Failed to load profile: ${err.message}`);
+      }
     }
   };
 

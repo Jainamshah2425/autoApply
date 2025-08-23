@@ -19,6 +19,19 @@ export default NextAuth({
         console.log('Session callback - User ID set to:', session.user.id);
       } catch (error) {
         console.error('Failed to fetch user ID for session:', error.message);
+        // If user doesn't exist, create them
+        try {
+          console.log('Creating new user for:', session.user.email);
+          const createRes = await axios.post('http://localhost:5000/api/user/create', {
+            email: session.user.email,
+            name: session.user.name,
+            image: session.user.image
+          });
+          session.user.id = createRes.data._id || createRes.data.userId;
+          console.log('New user created with ID:', session.user.id);
+        } catch (createError) {
+          console.error('Failed to create user:', createError.message);
+        }
       }
       return session;
     },

@@ -74,40 +74,112 @@ class HeatmapService {
 
     switch (activityType) {
       case 'interview_completed':
+        // Track interviews completed
         user.stats.totalInterviews = (user.stats.totalInterviews || 0) + 1;
-        user.stats.totalQuestions = (user.stats.totalQuestions || 0) + (details.questionsAnswered || 0);
+        user.stats.interviewsCompleted = user.stats.totalInterviews; // Alias for consistency
+        
+        // Track questions answered
+        const questionsAnswered = details.questionsAnswered || details.metadata?.questionsAnswered || 0;
+        user.stats.totalQuestions = (user.stats.totalQuestions || 0) + questionsAnswered;
+        user.stats.questionsAnswered = user.stats.totalQuestions; // Total questions answered
+        
+        // Track practice time (convert seconds to minutes)
+        const sessionDuration = details.metadata?.duration || 0;
+        user.stats.totalPracticeTime = (user.stats.totalPracticeTime || 0) + Math.round(sessionDuration / 60);
+        
+        // Calculate and update average score
+        const sessionScore = details.averageScore || details.metadata?.averageScore || 0;
+        if (sessionScore > 0) {
+          const totalSessions = user.stats.totalInterviews;
+          const currentAvgScore = user.stats.averageScore || 0;
+          
+          // Weighted average calculation
+          user.stats.averageScore = Number(
+            ((currentAvgScore * (totalSessions - 1)) + sessionScore) / totalSessions
+          ).toFixed(1);
+        }
+        
+        // Calculate improvement rate (based on recent performance trends)
+        await this.calculateImprovementRate(user, sessionScore);
         
         // Calculate XP with bonuses
         const baseXP = 50;
-        const completionBonus = Math.floor((details.completionRate || 0) / 10);
-        const scoreBonus = Math.floor((details.averageScore || 0) / 10);
-        const totalXP = baseXP + completionBonus + scoreBonus;
+        const questionBonus = questionsAnswered * 5; // 5 XP per question
+        const completionBonus = Math.floor((details.completionRate || 0) * 2); // Up to 200 XP for 100% completion
+        const scoreBonus = Math.floor(sessionScore * 2); // Up to 200 XP for perfect score
+        const totalXP = baseXP + questionBonus + completionBonus + scoreBonus;
         
         user.stats.experiencePoints = (user.stats.experiencePoints || 0) + totalXP;
+        user.stats.xp = user.stats.experiencePoints; // Alias for consistency
         user.stats.weeklyProgress = (user.stats.weeklyProgress || 0) + 1;
         
-        // Update average score
-        if (details.averageScore) {
-          const totalSessions = user.stats.totalInterviews;
-          const currentAvg = user.stats.averageScore || 0;
-          user.stats.averageScore = ((currentAvg * (totalSessions - 1)) + details.averageScore) / totalSessions;
-        }
-        
         this.checkLevelProgression(user);
+        
+        console.log(`📊 Updated stats for interview completion:
+          - Questions: +${questionsAnswered} (Total: ${user.stats.questionsAnswered})
+          - Practice Time: +${Math.round(sessionDuration / 60)}min (Total: ${user.stats.totalPracticeTime}min)
+          - Average Score: ${user.stats.averageScore}% (Session: ${sessionScore}%)
+          - XP: +${totalXP} (Total: ${user.stats.experiencePoints})`);
         break;
         
       case 'video_upload':
+        // Track individual video uploads
         user.stats.totalQuestions = (user.stats.totalQuestions || 0) + 1;
-        user.stats.totalVideoTime = (user.stats.totalVideoTime || 0) + parseInt(details.metadata?.duration || 0);
-        user.stats.experiencePoints = (user.stats.experiencePoints || 0) + 25; // 25 XP per video upload
+        user.stats.questionsAnswered = user.stats.totalQuestions;
+        
+        // Track video recording time
+        const videoDuration = parseInt(details.metadata?.duration || 0);
+        user.stats.totalVideoTime = (user.stats.totalVideoTime || 0) + videoDuration;
+        user.stats.totalPracticeTime = (user.stats.totalPracticeTime || 0) + Math.round(videoDuration / 60);
+        
+        // XP for video practice
+        user.stats.experiencePoints = (user.stats.experiencePoints || 0) + 25;
+        user.stats.xp = user.stats.experiencePoints;
+        
+        console.log(`📹 Updated stats for video upload:
+          - Questions: +1 (Total: ${user.stats.questionsAnswered})
+          - Practice Time: +${Math.round(videoDuration / 60)}min (Total: ${user.stats.totalPracticeTime}min)`);
         break;
         
       case 'resume_upload':
-        user.stats.experiencePoints = (user.stats.experiencePoints || 0) + 10; // 10 XP for resume upload
+        user.stats.experiencePoints = (user.stats.experiencePoints || 0) + 10;
+        user.stats.xp = user.stats.experiencePoints;
         break;
         
       default:
         user.stats.experiencePoints = (user.stats.experiencePoints || 0) + 5;
+        user.stats.xp = user.stats.experiencePoints;
+    }
+  }
+
+  /**
+   * Calculate improvement rate based on recent performance
+   */
+  static async calculateImprovementRate(user, currentScore) {
+    if (!user.contributions || user.contributions.length < 2) {
+      user.stats.improvementRate = 0;
+      return;
+    }
+
+    // Get last 5 interview sessions to calculate trend
+    const recentInterviews = user.contributions
+      .filter(c => c.activities.some(a => a.type === 'interview_completed'))
+      .slice(-5)
+      .map(c => {
+        const interview = c.activities.find(a => a.type === 'interview_completed');
+        return interview.metadata?.averageScore || 0;
+      })
+      .filter(score => score > 0);
+
+    if (recentInterviews.length >= 2) {
+      const firstScore = recentInterviews[0];
+      const lastScore = recentInterviews[recentInterviews.length - 1];
+      
+      // Calculate percentage improvement
+      const improvement = ((lastScore - firstScore) / firstScore) * 100;
+      user.stats.improvementRate = Number(Math.max(-100, Math.min(100, improvement))).toFixed(1);
+    } else {
+      user.stats.improvementRate = 0;
     }
   }
 
