@@ -47,20 +47,20 @@ const ProfileStats = ({ stats = {} }) => {
       color: 'bg-green-500',
       description: 'Interview questions practiced'
     },
-    {
-      title: 'Average Score',
-      value: `${averageScore}%`,
-      icon: '📊',
-      color: 'bg-purple-500',
-      description: 'Performance across all interviews'
-    },
-    {
-      title: 'Practice Time',
-      value: formatDuration(totalVideoTime),
-      icon: '⏱️',
-      color: 'bg-orange-500',
-      description: 'Total video recording time'
-    }
+    // {
+    //   title: 'Average Score',
+    //   value: `${averageScore}%`,
+    //   icon: '📊',
+    //   color: 'bg-purple-500',
+    //   description: 'Performance across all interviews'
+    // },
+    // {
+    //   title: 'Practice Time',
+    //   value: formatDuration(totalVideoTime),
+    //   icon: '⏱️',
+    //   color: 'bg-orange-500',
+    //   description: 'Total video recording time'
+    // }
   ];
 
   const achievementBadges = [
@@ -246,3 +246,6 @@ const ProfileStats = ({ stats = {} }) => {
 };
 
 export default ProfileStats;
+
+
+

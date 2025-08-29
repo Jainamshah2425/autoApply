@@ -591,8 +591,10 @@ const DebugInfo = () => {
   }
 
   return (
+    <>
+     <Header />
     <main className="min-h-screen px-4 py-8 bg-gray-50">
-      <Header />
+     
       <div className="max-w-4xl mx-auto mt-8">
         <h2 className="text-2xl font-semibold mb-4">AI Interview Prep</h2>
         
@@ -899,5 +901,6 @@ const DebugInfo = () => {
         {isTranscribing && <p className="text-sm text-gray-500 mt-4">Transcribing your answer...</p>}
       </div>
     </main>
+    </>
   );
 }
