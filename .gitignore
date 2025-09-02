@@ -62,7 +62,11 @@ backend/uploads/
 
 # Large AI/ML models that should not be in version control
 backend/vosk-model/
-models/
+backend/fastapi_service/models/
+*.h5
+*.pkl
+*.pth
+*.onnx
 
 # =============================================================================
 # TEST FILES & DEVELOPMENT ARTIFACTS
