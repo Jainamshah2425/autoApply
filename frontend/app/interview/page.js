@@ -8,6 +8,9 @@ import dynamic from 'next/dynamic';
 import SessionInsights from '../../components/SessionInsights';
 import QuestionAnalytics from '../../components/QuestionAnalytics';
 
+// Use environment variable for API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 const ReactMediaRecorder = dynamic(
   () => import('react-media-recorder').then((mod) => mod.ReactMediaRecorder),
   { ssr: false }
@@ -81,7 +84,7 @@ export default function InterviewPrepPage() {
   useEffect(() => {
     if (session?.user?.email) {
       console.log('Fetching user ID for email:', session.user.email);
-      axios.get(`http://localhost:5000/api/user/by-email/${session.user.email}`)
+      axios.get(`${API_URL}/api/user/by-email/${session.user.email}`)
         .then(res => {
           console.log('API Response:', res.data);
           if (!res.data || !res.data._id) {
@@ -139,7 +142,7 @@ const generateQuestions = useCallback(async () => {
       formData.append('jobDescription', jobDescription.trim());
     }
 
-    const res = await axios.post('http://localhost:5000/api/interview/generate-questions', formData, {
+    const res = await axios.post(`${API_URL}/api/interview/generate-questions`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data',
       },
@@ -218,7 +221,7 @@ const DebugInfo = () => {
         wordCount: answerToAnalyze.split(' ').length
       } : null;
 
-      const res = await axios.post('http://localhost:5000/api/interview/analyze-answer', {
+      const res = await axios.post(`${API_URL}/api/interview/analyze-answer`, {
         question: questions[currentQuestionIndex],
         answer: answerToAnalyze,
         audioMetrics,
@@ -263,7 +266,7 @@ const DebugInfo = () => {
       formData.append('questionText', questions[currentQuestionIndex]);
 
       // Use the Express backend endpoint for video transcription
-      const res = await axios.post('http://localhost:5000/api/interview/analyze-video', formData, {
+      const res = await axios.post(`${API_URL}/api/interview/analyze-video`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },
@@ -307,7 +310,7 @@ const DebugInfo = () => {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:5000/api/interview/analyze-answer', {
+      const res = await axios.post(`${API_URL}/api/interview/analyze-answer`, {
         question: questions[currentQuestionIndex],
         answer: userAnswer,
         audioMetrics: recordedVideoMetrics, // Use recorded video metrics as audioMetrics
@@ -389,7 +392,7 @@ const DebugInfo = () => {
     setError('');
     
     try {
-      const res = await axios.post('http://localhost:5000/api/interview/complete-session', {
+      const res = await axios.post(`${API_URL}/api/interview/complete-session`, {
         sessionId: sessionState.sessionId,
         userId,
         questionTimings: sessionState.questionTimings
@@ -473,7 +476,7 @@ const DebugInfo = () => {
     setError('');
 
     try {
-      const res = await axios.post('http://localhost:5000/api/llm/generate-improved-answer', {
+      const res = await axios.post(`${API_URL}/api/llm/generate-improved-answer`, {
         question: questions[currentQuestionIndex],
         userAnswer: userAnswer,
         jobDescription: jobDescription,
@@ -513,7 +516,7 @@ const DebugInfo = () => {
       setIsUploading(true);
       setUploadStatus('Uploading...');
       
-      const res = await axios.post('http://localhost:5000/api/user/upload-resume', formData, {
+      const res = await axios.post(`${API_URL}/api/user/upload-resume`, formData, {
         headers: {
           'Content-Type': 'multipart/form-data',
         },

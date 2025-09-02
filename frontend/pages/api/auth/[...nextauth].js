@@ -2,6 +2,8 @@ import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import axios from 'axios';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default NextAuth({
   providers: [
     GoogleProvider({
@@ -14,7 +16,7 @@ export default NextAuth({
     async session({ session, token }) {
       try {
         // Fetch user ID from your backend
-        const res = await axios.get(`http://localhost:5000/api/user/by-email/${session.user.email}`);
+        const res = await axios.get(`${API_URL}/api/user/by-email/${session.user.email}`);
         session.user.id = res.data._id || res.data.userId;
         console.log('Session callback - User ID set to:', session.user.id);
       } catch (error) {
@@ -22,7 +24,7 @@ export default NextAuth({
         // If user doesn't exist, create them
         try {
           console.log('Creating new user for:', session.user.email);
-          const createRes = await axios.post('http://localhost:5000/api/user/create', {
+          const createRes = await axios.post(`${API_URL}/api/user/create`, {
             email: session.user.email,
             name: session.user.name,
             image: session.user.image

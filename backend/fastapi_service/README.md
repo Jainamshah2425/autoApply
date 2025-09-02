@@ -1,53 +1,78 @@
-# Interview Transcription Service
+---
+title: Interview Analysis API
+emoji: 🎤
+colorFrom: blue
+colorTo: purple
+sdk: docker
+pinned: false
+license: mit
+hardware: cpu-basic
+---
 
-This service handles speech-to-text transcription for interview videos.
+# Interview Analysis FastAPI Service
 
-## Setup
+This is a FastAPI service that provides video analysis and transcription capabilities for interview practice applications.
 
-### Prerequisites
+## Features
 
-- Node.js (for the backend)
-- Python 3.9+ and virtual environment (for the FastAPI service)
-- FFmpeg (for audio extraction)
+- 🎥 Video analysis with facial expression detection
+- 🔊 Audio transcription and speech analysis
+- 📊 Performance metrics calculation
+- 🤖 AI-powered feedback generation
+- 📈 Real-time sentiment analysis
 
-### Installation
+## API Endpoints
 
-1. Set up the Python environment:
-   ```bash
-   cd backend/fastapi_service
-   # Create virtual environment
-   python -m venv tr
-   
-   # Activate virtual environment
-   tr\Scripts\activate  # Windows
-   source tr/bin/activate  # Linux/Mac
-   
-   # Install dependencies
-   pip install -r requirements.txt
-   ```
+### Main Endpoints
+- `POST /analyze-video` - Comprehensive video analysis
+- `POST /transcribe-audio` - Audio transcription only
+- `POST /analyze-answer-video` - Interview answer analysis
+- `GET /health` - Health check endpoint
+- `GET /` - Service information
 
-2. Set up the Node.js backend:
-   ```bash
-   cd backend
-   npm install
-   cp .env.example .env  # Create .env file and edit as needed
-   ```
+### Analysis Features
+- Facial expression detection
+- Speech rate analysis
+- Confidence scoring
+- Sentiment analysis
+- Audio quality metrics
 
-### Starting the Services
+## Usage
 
-1. Start the FastAPI service:
-   ```bash
-   cd backend/fastapi_service
-   # On Windows
-   .\start_service.bat
-   
-   # On Linux/Mac
-   source tr/bin/activate
-   python main.py
-   ```
+The API is designed to work with interview practice applications and provides detailed analysis of video recordings including:
 
-2. Start the Node.js backend:
-   ```bash
+- **Audio Analysis**: Transcription, speech rate, pauses, volume
+- **Video Analysis**: Facial expressions, eye contact, head movements
+- **Performance Metrics**: Confidence scores, sentiment analysis
+- **Feedback Generation**: AI-powered improvement suggestions
+
+## Example Request
+
+```bash
+curl -X POST "https://your-space.hf.space/analyze-video" \
+  -F "video_file=@recording.webm" \
+  -F "userId=user123" \
+  -F "sessionId=session456" \
+  -F "questionIndex=0" \
+  -F "questionText=Tell me about yourself"
+```
+
+## Environment Variables
+
+The service uses the following configuration:
+- `PORT`: Server port (default: 7860)
+- `ENVIRONMENT`: Runtime environment
+- `LOG_LEVEL`: Logging level
+
+## Hardware Requirements
+
+- CPU: 2+ cores recommended
+- RAM: 4GB+ recommended
+- Storage: 2GB+ for models and cache
+
+---
+
+Deployed on Hugging Face Spaces 🚀
    cd backend
    npm start  # This will check if FastAPI is running first
    ```

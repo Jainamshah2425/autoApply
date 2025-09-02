@@ -7,20 +7,40 @@ const dotenv = require('dotenv');
 // Load environment variables
 dotenv.config();
 
-// Get FastAPI URL from environment
-const FASTAPI_URL = process.env.FASTAPI_URL || 'http://localhost:8000';
-const MAX_RETRIES = 2;
-const RETRY_DELAY = 1000; // 1 second
+// Get FastAPI URL from environment - Updated for Hugging Face Spaces
+const FASTAPI_URL = process.env.FASTAPI_URL || 'https://jainamshah2425-autoapply.hf.space';
+const MAX_RETRIES = 3;
+const RETRY_DELAY = 2000; // 2 seconds
 
 class FastApiClient {
   constructor() {
     this.baseUrl = FASTAPI_URL;
     this.client = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000, // 30 seconds
+      timeout: 120000, // 2 minutes for video processing
+      headers: {
+        'User-Agent': 'AutoApply-Backend/1.0'
+      }
     });
     
-    console.log(`FastAPI client initialized with URL: ${this.baseUrl}`);
+    console.log(`🚀 FastAPI client initialized with URL: ${this.baseUrl}`);
+    
+    // Test connection on initialization
+    this.testConnection();
+  }
+
+  /**
+   * Test connection to FastAPI service
+   */
+  async testConnection() {
+    try {
+      const response = await this.client.get('/health', { timeout: 10000 });
+      console.log('✅ FastAPI connection successful:', response.data);
+      return true;
+    } catch (error) {
+      console.error('❌ FastAPI connection failed:', error.message);
+      return false;
+    }
   }
 
   /**

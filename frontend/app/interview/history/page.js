@@ -5,6 +5,8 @@ import axios from 'axios';
 import Header from '../../../components/header';
 import Link from 'next/link';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function InterviewHistoryPage() {
   const { data: session } = useSession();
   const [sessions, setSessions] = useState([]);
@@ -16,7 +18,7 @@ export default function InterviewHistoryPage() {
     if (session?.user?.email) {
       console.log('Fetching user ID for email:', session.user.email);
       axios
-        .get(`http://localhost:5000/api/user/by-email/${session.user.email}`)
+        .get(`${API_URL}/api/user/by-email/${session.user.email}`)
         .then((res) => {
           console.log('User API response:', res.data);
           // Fix: Use _id instead of userId
@@ -37,7 +39,7 @@ export default function InterviewHistoryPage() {
       console.log('Fetching sessions for userId:', userId);
       // Fix: Use correct API endpoint
       axios
-        .get(`http://localhost:5000/api/interview/sessions/user/${userId}`)
+        .get(`${API_URL}/api/interview/sessions/user/${userId}`)
         .then((res) => {
           console.log('Sessions API response:', res.data);
           // The backend returns sessions directly in res.data.sessions

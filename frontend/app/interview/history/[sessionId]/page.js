@@ -7,6 +7,8 @@ import SentimentDashboard from '../../../../components/SentimentDashboard';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function SessionDetailPage() {
   const { data: session } = useSession();
   const [interviewSession, setInterviewSession] = useState(null);
@@ -21,7 +23,7 @@ export default function SessionDetailPage() {
     if (sessionId) {
       console.log('Loading session details for:', sessionId);
       axios
-        .get(`http://localhost:5000/api/interview/session/${sessionId}`)
+        .get(`${API_URL}/api/interview/session/${sessionId}`)
         .then((res) => {
           console.log('Session data:', res.data);
           setInterviewSession(res.data.session || res.data);

@@ -7,6 +7,9 @@ import ContributionHeatmap from '../../components/ContributionHeatmap';
 import ProfileStats from '../../components/ProfileStats';
 import ProfileSettings from '../../components/ProfileSettings';
 
+// Use environment variable for API URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [userProfile, setUserProfile] = useState(null);
@@ -121,7 +124,7 @@ export default function ProfilePage() {
       console.log('Loading user profile for:', session.user.email);
       
       const response = await axios.get(
-        `http://localhost:5000/api/user/by-email/${session.user.email}`,
+        `${API_URL}/api/user/by-email/${session.user.email}`,
         {
           timeout: 10000, // 10 second timeout
           headers: {
@@ -142,7 +145,7 @@ export default function ProfilePage() {
         // User not found, try to create them
         console.log('User not found, attempting to create...');
         try {
-          const createResponse = await axios.post('http://localhost:5000/api/user/create', {
+          const createResponse = await axios.post(`${API_URL}/api/user/create`, {
             email: session.user.email,
             name: session.user.name,
             image: session.user.image
@@ -184,7 +187,7 @@ export default function ProfilePage() {
       }
 
       const response = await axios.get(
-        `http://localhost:5000/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+        `${API_URL}/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
       setContributionData(response.data);
     } catch (err) {
@@ -198,7 +201,7 @@ export default function ProfilePage() {
       if (!userProfile?._id) return;
       
       const response = await axios.get(
-        `http://localhost:5000/api/user/stats/${userProfile._id}`
+        `${API_URL}/api/user/stats/${userProfile._id}`
       );
       setProfileStats(response.data);
     } catch (err) {
@@ -211,7 +214,7 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       await axios.put(
-        `http://localhost:5000/api/user/profile/${userProfile._id}`,
+        `${API_URL}/api/user/profile/${userProfile._id}`,
         updatedData
       );
       setUserProfile({ ...userProfile, ...updatedData });
@@ -226,7 +229,7 @@ export default function ProfilePage() {
   const updatePrivacySettings = async (settings) => {
     try {
       await axios.put(
-        `http://localhost:5000/api/user/privacy/${userProfile._id}`,
+        `${API_URL}/api/user/privacy/${userProfile._id}`,
         settings
       );
       setPrivacySettings(settings);

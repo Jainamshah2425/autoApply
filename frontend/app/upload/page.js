@@ -5,6 +5,8 @@ import axios from 'axios';
 import Header from '../../components/header';
 import { useSearchParams } from 'next/navigation';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function UploadPage() {
   const { data: session, status } = useSession();
   const [userId, setUserId] = useState(null);
@@ -34,7 +36,7 @@ export default function UploadPage() {
   useEffect(() => {
     if (session?.user?.email) {
       axios
-        .get(`http://localhost:5000/api/user/by-email/${session.user.email}`)
+        .get(`${API_URL}/api/user/by-email/${session.user.email}`)
         .then((res) => {
           setUserId(res.data._id);
           setIsGmailConnected(!!res.data.gmailTokens);
@@ -53,7 +55,7 @@ export default function UploadPage() {
 
     try {
       setUploadStatus('Uploading...');
-      await axios.post('http://localhost:5000/api/user/upload-resume', formData);
+      await axios.post(`${API_URL}/api/user/upload-resume`, formData);
       setUploadStatus('✅ Resume uploaded successfully!');
     } catch (err) {
       console.error('Upload failed', err);
@@ -66,7 +68,7 @@ export default function UploadPage() {
     if (!userId) return;
 
     try {
-      const res = await axios.post('http://localhost:5000/api/llm/generate-cover-letter', {
+      const res = await axios.post(`${API_URL}/api/llm/generate-cover-letter`, {
         userId,
         jobTitle,
         companyName: company,
@@ -84,7 +86,7 @@ export default function UploadPage() {
     if (!userId || !coverLetter || !recipientEmail) return;
 
     try {
-      await axios.post('http://localhost:5000/api/email/send', {
+      await axios.post(`${API_URL}/api/email/send`, {
         userId,
         to: recipientEmail,
         subject: `Application for ${jobTitle}`,
@@ -104,7 +106,7 @@ export default function UploadPage() {
 
   const connectGmail = () => {
     if (userId) {
-      window.location.href = `http://localhost:5000/api/auth/google?userId=${userId}`;
+      window.location.href = `${API_URL}/api/auth/google?userId=${userId}`;
     }
   };
 

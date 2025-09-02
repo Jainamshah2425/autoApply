@@ -6,6 +6,8 @@ import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Header from '../../components/header';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+
 export default function DashboardPage() {
   const { data: session, status } = useSession();
   const [jobs, setJobs] = useState([]);
@@ -25,7 +27,7 @@ export default function DashboardPage() {
   useEffect(() => {
     if (session?.user?.email) {
       axios
-        .get(`http://localhost:5000/api/user/by-email/${session.user.email}`)
+        .get(`${API_URL}/api/user/by-email/${session.user.email}`)
         .then((res) => setUserId(res.data.userId))
         .catch((err) => console.error('Failed to load user', err));
     }
@@ -45,7 +47,7 @@ export default function DashboardPage() {
       setScrapeInfo(null);
       
       console.log(`Fetching jobs for domain: ${domain}`);
-      const res = await axios.get(`http://localhost:5000/api/jobs/scrape?domain=${domain}`);
+      const res = await axios.get(`${API_URL}/api/jobs/scrape?domain=${domain}`);
       
       if (res.data.success) {
         setJobs(res.data.jobs);
@@ -70,7 +72,7 @@ export default function DashboardPage() {
 
     try {
       setLoading(true);
-      const response = await axios.post('http://localhost:5000/api/jobs/auto-apply', { userId });
+      const response = await axios.post(`${API_URL}/api/jobs/auto-apply`, { userId });
       
       if (response.data.success) {
         alert(`✅ Auto-apply complete! Applied to ${response.data.appliedCount} jobs.`);
@@ -87,7 +89,7 @@ export default function DashboardPage() {
 
   const testConnection = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/jobs/test');
+      const response = await axios.get(`${API_URL}/api/jobs/test`);
       console.log('Test response:', response.data);
       alert('✅ Backend connection successful!');
     } catch (err) {
