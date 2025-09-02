@@ -591,17 +591,45 @@ router.post('/analyze-video', videoUpload.single('video'), async (req, res) => {
       return res.status(400).json({ error: 'Video file not found after upload' });
     }
 
-    // Send the video to FastAPI for transcription
+    // Send the video to FastAPI for transcription and analysis
     const result = await fastApiClient.analyzeVideo(req.file.path);
     
-    // Return the transcription results
+    // Calculate video metrics
+    const stats = fs.statSync(req.file.path);
+    const videoMetrics = {
+      fileSize: stats.size,
+      duration: result.duration || 0,
+      format: 'webm',
+      uploadTime: new Date().toISOString()
+    };
+    
+    // Clean up the uploaded file
+    try {
+      fs.unlinkSync(req.file.path);
+    } catch (cleanupError) {
+      console.warn('Failed to cleanup video file:', cleanupError.message);
+    }
+    
+    // Return the transcription results in the format expected by frontend
     res.json({
       success: true,
-      transcription: result.transcription,
-      requestId: result.request_id
+      transcription: result.transcription || result.transcript || '',
+      video_metrics: videoMetrics,
+      request_id: result.request_id,
+      confidence: result.confidence
     });
   } catch (error) {
     console.error('Error analyzing video:', error);
+    
+    // Clean up the uploaded file on error
+    if (req.file && fs.existsSync(req.file.path)) {
+      try {
+        fs.unlinkSync(req.file.path);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup video file on error:', cleanupError.message);
+      }
+    }
+    
     res.status(500).json({ 
       error: 'Failed to analyze video', 
       details: error.message 

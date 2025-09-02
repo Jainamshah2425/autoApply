@@ -68,6 +68,10 @@ export default function InterviewPrepPage() {
   const [recordedVideoMetrics, setRecordedVideoMetrics] = useState(null); // New state for video metrics
   const [improvedAnswer, setImprovedAnswer] = useState('');
   const [isGeneratingImprovedAnswer, setIsGeneratingImprovedAnswer] = useState(false);
+  
+  // Camera permission state
+  const [cameraPermission, setCameraPermission] = useState('unknown'); // 'granted', 'denied', 'prompt', 'unknown'
+  const [permissionError, setPermissionError] = useState('');
 
   // Clear error after 5 seconds
   useEffect(() => {
@@ -105,6 +109,103 @@ export default function InterviewPrepPage() {
       setIsLoadingUser(false); // Also set to false if no session/email
     }
   }, [session]);
+
+  // Check camera and microphone permissions
+  const checkMediaPermissions = useCallback(async () => {
+    try {
+      console.log('Checking media permissions...');
+      
+      // Check if getUserMedia is available
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        setPermissionError('Camera/microphone not supported in this browser');
+        setCameraPermission('denied');
+        return false;
+      }
+
+      // Try to get permission status if available
+      if (navigator.permissions) {
+        try {
+          const cameraResult = await navigator.permissions.query({ name: 'camera' });
+          const microphoneResult = await navigator.permissions.query({ name: 'microphone' });
+          
+          console.log('Permission status:', {
+            camera: cameraResult.state,
+            microphone: microphoneResult.state
+          });
+          
+          if (cameraResult.state === 'denied' || microphoneResult.state === 'denied') {
+            setCameraPermission('denied');
+            setPermissionError('Camera or microphone access denied. Please enable in browser settings.');
+            return false;
+          } else if (cameraResult.state === 'granted' && microphoneResult.state === 'granted') {
+            setCameraPermission('granted');
+            setPermissionError('');
+            return true;
+          } else {
+            setCameraPermission('prompt');
+            return true; // Will prompt when recording starts
+          }
+        } catch (permError) {
+          console.log('Permission API not fully supported, will prompt during recording');
+          setCameraPermission('prompt');
+          return true;
+        }
+      } else {
+        console.log('Permissions API not supported, will prompt during recording');
+        setCameraPermission('prompt');
+        return true;
+      }
+    } catch (error) {
+      console.error('Error checking permissions:', error);
+      setPermissionError('Error checking camera permissions: ' + error.message);
+      setCameraPermission('unknown');
+      return false;
+    }
+  }, []);
+
+  // Request media permissions explicitly
+  const requestMediaPermissions = useCallback(async () => {
+    try {
+      console.log('Requesting media permissions...');
+      setPermissionError('');
+      
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: true, 
+        audio: true 
+      });
+      
+      console.log('Media permissions granted');
+      setCameraPermission('granted');
+      setPermissionError('');
+      
+      // Stop the stream immediately since we only wanted to check permissions
+      stream.getTracks().forEach(track => track.stop());
+      
+      return true;
+    } catch (error) {
+      console.error('Media permission denied:', error);
+      setCameraPermission('denied');
+      
+      let errorMessage = 'Camera/microphone access denied. ';
+      if (error.name === 'NotAllowedError') {
+        errorMessage += 'Please click "Allow" when prompted, or enable in browser settings.';
+      } else if (error.name === 'NotFoundError') {
+        errorMessage += 'No camera or microphone found.';
+      } else if (error.name === 'NotReadableError') {
+        errorMessage += 'Camera/microphone is being used by another application.';
+      } else {
+        errorMessage += error.message;
+      }
+      
+      setPermissionError(errorMessage);
+      return false;
+    }
+  }, []);
+
+  // Check permissions when component mounts
+  useEffect(() => {
+    checkMediaPermissions();
+  }, [checkMediaPermissions]);
 
   // Add this enhanced debugging version to your page.js
 // Replace the generateQuestions function with this version:
@@ -255,8 +356,16 @@ const DebugInfo = () => {
   }, [questions, currentQuestionIndex, recordingState.recordingStartTime, sessionState.sessionId]);
 
   const processRecording = async (blobUrl, blob) => {
+    console.log('processRecording called with:', { blobUrl, blobSize: blob?.size });
+    
+    if (!blob || blob.size === 0) {
+      setError('Recording failed - no video data captured. Please try again.');
+      return;
+    }
+    
     setIsTranscribing(true);
     setError('');
+    
     try {
       const formData = new FormData();
       formData.append('video', blob, 'recording.webm');
@@ -264,6 +373,13 @@ const DebugInfo = () => {
       formData.append('sessionId', sessionState.sessionId);
       formData.append('questionIndex', currentQuestionIndex);
       formData.append('questionText', questions[currentQuestionIndex]);
+
+      console.log('Sending video to backend:', {
+        blobSize: blob.size,
+        userId,
+        sessionId: sessionState.sessionId,
+        questionIndex: currentQuestionIndex
+      });
 
       // Use the Express backend endpoint for video transcription
       const res = await axios.post(`${API_URL}/api/interview/analyze-video`, formData, {
@@ -273,11 +389,20 @@ const DebugInfo = () => {
         timeout: 180000, // 3 minutes for video processing
       });
       
-      setTranscription(res.data.transcription);
-      setUserAnswer(res.data.transcription);
-      setRecordedVideoMetrics(res.data.video_metrics);
+      console.log('Backend response:', res.data);
       
-      setError('');
+      if (res.data.success && res.data.transcription) {
+        setTranscription(res.data.transcription);
+        setUserAnswer(res.data.transcription);
+        setRecordedVideoMetrics(res.data.video_metrics);
+        setError('');
+        console.log('Video processed successfully:', {
+          transcriptionLength: res.data.transcription.length,
+          videoMetrics: res.data.video_metrics
+        });
+      } else {
+        throw new Error('No transcription received from server');
+      }
       
     } catch (error) {
       console.error('Error in processRecording:', error);
@@ -288,8 +413,14 @@ const DebugInfo = () => {
         errorMessage += 'The analysis took too long. Please try with a shorter recording.';
       } else if (error.response?.status === 422) {
         errorMessage += 'Invalid video format. Please try recording again.';
+      } else if (error.response?.status === 400) {
+        errorMessage += error.response.data?.error || 'Bad request. Please check your recording.';
+      } else if (error.response?.status === 500) {
+        errorMessage += 'Server error. Please try again later.';
       } else if (error.response?.data?.detail) {
         errorMessage += error.response.data.detail;
+      } else if (error.response?.data?.error) {
+        errorMessage += error.response.data.error;
       } else {
         errorMessage += 'Please check your connection and try again.';
       }
@@ -359,7 +490,29 @@ const DebugInfo = () => {
     }
   }, [userAnswer, recordedVideoMetrics, questions, currentQuestionIndex, sessionState.sessionId]);
 
-  const handleStartRecording = useCallback(() => {
+  const handleStartRecording = useCallback(async () => {
+    console.log('handleStartRecording called, current permission:', cameraPermission);
+    
+    // Check permissions before starting recording
+    if (cameraPermission === 'denied') {
+      setError('Camera access denied. Please enable camera access in your browser settings and refresh the page.');
+      return;
+    }
+    
+    // If permission is unknown or prompt, try to request it
+    if (cameraPermission !== 'granted') {
+      console.log('Requesting media permissions...');
+      const granted = await requestMediaPermissions();
+      if (!granted) {
+        setError('Camera access is required for video recording. Please allow access and try again.');
+        return;
+      }
+    }
+    
+    // Clear any previous errors
+    setPermissionError('');
+    setError('');
+    
     setRecordingState(prev => ({
       ...prev,
       isRecording: true,
@@ -368,7 +521,7 @@ const DebugInfo = () => {
     setTranscription(''); // Clear transcription on new recording start
     setUserAnswer(''); // Clear user answer on new recording start
     setFeedback(null); // Clear feedback on new recording start
-  }, []);
+  }, [cameraPermission, requestMediaPermissions]);
 
   const nextQuestion = useCallback(() => {
     if (currentQuestionIndex < questions.length - 1) {
@@ -742,83 +895,146 @@ const DebugInfo = () => {
               {/* Audio Recording Option */}
               <div className="space-y-4">
                 <h4 className="font-semibold text-gray-700">Option 2: Record Your Answer</h4>
-                <div className="p-6 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
-                  <ReactMediaRecorder
-                    video
-                    audio
-                    onStop={processRecording}
-                    render={({ status, startRecording, stopRecording, previewStream }) => (
-                      <div className="space-y-5">
-                        <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden shadow-md">
-                          <VideoPreview stream={previewStream} />
-                          {status === 'recording' && (
-                            <div className="absolute top-3 right-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse flex items-center">
-                              <span className="w-2 h-2 bg-white rounded-full mr-2"></span> Recording
-                            </div>
-                          )}
-                          {status === 'idle' && !previewStream && (
-                            <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
-                              Camera Preview
-                            </div>
-                          )}
-                        </div>
-                        <div className="flex items-center justify-between">
-                          <span className="text-sm font-medium text-gray-700">Status: 
-                            <span className={`ml-2 px-3 py-1 rounded-full text-sm font-semibold ${
-                              status === 'recording' ? 'bg-red-100 text-red-800' :
-                              status === 'stopped' ? 'bg-green-100 text-green-800' :
-                              'bg-blue-100 text-blue-800'
-                            }`}>
-                              {status.charAt(0).toUpperCase() + status.slice(1)}
-                            </span>
-                          </span>
-                          {recordingState.isRecording && (
-                            <span className="text-sm text-gray-600">
-                              Duration: {Math.floor((Date.now() - recordingState.recordingStartTime) / 1000)}s
-                            </span>
-                          )}
-                        </div>
-                        <div className="flex gap-3">
-                          <button 
-                            onClick={() => {
-                              startRecording();
-                              handleStartRecording();
-                            }}
-                            disabled={status === 'recording' || loading}
-                            className="flex-1 bg-red-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-red-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                
+                {/* Permission Status Display */}
+                {cameraPermission !== 'granted' && (
+                  <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                    <div className="flex items-start space-x-3">
+                      <div className="flex-shrink-0">
+                        <svg className="w-5 h-5 text-yellow-600 mt-0.5" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                        </svg>
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="text-sm font-medium text-yellow-800">Camera & Microphone Access Required</h3>
+                        <p className="text-sm text-yellow-700 mt-1">
+                          {cameraPermission === 'denied' 
+                            ? 'Camera access was denied. Please enable it in your browser settings and refresh the page.'
+                            : 'Please allow camera and microphone access to record your answer.'
+                          }
+                        </p>
+                        {permissionError && (
+                          <p className="text-sm text-red-600 mt-2">{permissionError}</p>
+                        )}
+                        {cameraPermission !== 'denied' && (
+                          <button
+                            onClick={requestMediaPermissions}
+                            className="mt-3 px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition-colors text-sm"
                           >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                              <path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v.75H15a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25H9.75A2.25 2.25 0 0 1 7.5 18.75V7.5H6.75A2.25 2.25 0 0 1 4.5 5.25v-.75ZM6 7.5v10.5c0 .414.336.75.75.75h.75V7.5H6Zm10.5 0v10.5c0 .414-.336.75-.75.75h-.75V7.5h.75Z" />
-                            </svg>
-                            <span>Start Recording</span>
+                            Enable Camera Access
                           </button>
-                          <button 
-                            onClick={stopRecording}
-                            disabled={status !== 'recording' || loading}
-                            className="flex-1 bg-gray-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-gray-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
-                              <path fillRule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clipRule="evenodd" />
-                            </svg>
-                            <span>Stop Recording</span>
-                          </button>
-                        </div>
-                        {transcription && (
-                          <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
-                            <h3 className="font-bold text-gray-800 mb-2">Transcription:</h3>
-                            <p className="text-gray-700 text-sm leading-relaxed">{transcription}</p>
-                            <button
-                              onClick={analyzeRecordedAnswer}
-                              disabled={loading || !transcription.trim()}
-                              className="w-full bg-purple-600 text-white px-4 py-2 rounded mt-4 disabled:opacity-50 hover:bg-purple-700 transition-colors"
-                            >
-                              {loading ? 'Analyzing...' : 'Analyze Recorded Answer'}
-                            </button>
-                          </div>
                         )}
                       </div>
-                    )}
-                  />
+                    </div>
+                  </div>
+                )}
+                
+                <div className="p-6 bg-gray-50 rounded-xl shadow-inner border border-gray-200">
+                  {isTranscribing ? (
+                    <div className="flex items-center justify-center py-12">
+                      <div className="text-center">
+                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                        <p className="text-gray-600">Processing your recording...</p>
+                        <p className="text-sm text-gray-500 mt-2">This may take up to 3 minutes</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <ReactMediaRecorder
+                      video
+                      audio
+                      onStop={processRecording}
+                      mediaRecorderOptions={{
+                        mimeType: 'video/webm;codecs=vp9,opus'
+                      }}
+                      render={({ status, startRecording, stopRecording, previewStream, error }) => (
+                        <div className="space-y-5">
+                          {error && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg text-red-700 text-sm">
+                              <strong>Recording error:</strong> {error}
+                              <br />
+                              <span className="text-xs">This usually means camera/microphone access was denied. Please refresh and allow access.</span>
+                            </div>
+                          )}
+                          <div className="relative w-full aspect-video bg-gray-200 rounded-lg overflow-hidden shadow-md">
+                            <VideoPreview stream={previewStream} />
+                            {status === 'recording' && (
+                              <div className="absolute top-3 right-3 bg-red-600 text-white px-3 py-1 rounded-full text-xs font-bold animate-pulse flex items-center">
+                                <span className="w-2 h-2 bg-white rounded-full mr-2"></span> Recording
+                              </div>
+                            )}
+                            {status === 'idle' && !previewStream && (
+                              <div className="absolute inset-0 flex items-center justify-center text-gray-500 text-sm">
+                                {cameraPermission === 'granted' ? 'Camera Preview' : 'Camera access needed'}
+                              </div>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-medium text-gray-700">Status: 
+                              <span className={`ml-2 px-3 py-1 rounded-full text-sm font-semibold ${
+                                status === 'recording' ? 'bg-red-100 text-red-800' :
+                                status === 'stopped' ? 'bg-green-100 text-green-800' :
+                                'bg-blue-100 text-blue-800'
+                              }`}>
+                                {status.charAt(0).toUpperCase() + status.slice(1)}
+                              </span>
+                            </span>
+                            {recordingState.isRecording && (
+                              <span className="text-sm text-gray-600">
+                                Duration: {Math.floor((Date.now() - recordingState.recordingStartTime) / 1000)}s
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex gap-3">
+                            <button 
+                              onClick={async () => {
+                                console.log('Starting recording...');
+                                await handleStartRecording();
+                                if (cameraPermission === 'granted') {
+                                  startRecording();
+                                }
+                              }}
+                              disabled={status === 'recording' || loading || isTranscribing || cameraPermission === 'denied'}
+                              className="flex-1 bg-red-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-red-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                <path d="M8.25 4.5a3.75 3.75 0 1 1 7.5 0v.75H15a2.25 2.25 0 0 1 2.25 2.25v10.5a2.25 2.25 0 0 1-2.25 2.25H9.75A2.25 2.25 0 0 1 7.5 18.75V7.5H6.75A2.25 2.25 0 0 1 4.5 5.25v-.75ZM6 7.5v10.5c0 .414.336.75.75.75h.75V7.5H6Zm10.5 0v10.5c0 .414-.336.75-.75.75h-.75V7.5h.75Z" />
+                              </svg>
+                              <span>
+                                {cameraPermission === 'denied' ? 'Camera Denied' : 'Start Recording'}
+                              </span>
+                            </button>
+                            <button 
+                              onClick={() => {
+                                console.log('Stopping recording...');
+                                stopRecording();
+                                setRecordingState(prev => ({ ...prev, isRecording: false }));
+                              }}
+                              disabled={status !== 'recording' || loading || isTranscribing}
+                              className="flex-1 bg-gray-600 text-white px-5 py-3 rounded-lg shadow-md hover:bg-gray-700 transition-all duration-200 ease-in-out disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-5 h-5">
+                                <path fillRule="evenodd" d="M4.5 7.5a3 3 0 0 1 3-3h9a3 3 0 0 1 3 3v9a3 3 0 0 1-3 3h-9a3 3 0 0 1-3-3v-9Z" clipRule="evenodd" />
+                              </svg>
+                              <span>Stop Recording</span>
+                            </button>
+                          </div>
+                          {transcription && (
+                            <div className="mt-4 p-4 bg-white rounded-lg border border-gray-200 shadow-sm">
+                              <h3 className="font-bold text-gray-800 mb-2">Transcription:</h3>
+                              <p className="text-gray-700 text-sm leading-relaxed">{transcription}</p>
+                              <button
+                                onClick={analyzeRecordedAnswer}
+                                disabled={loading || !transcription.trim()}
+                                className="w-full bg-purple-600 text-white px-4 py-2 rounded mt-4 disabled:opacity-50 hover:bg-purple-700 transition-colors"
+                              >
+                                {loading ? 'Analyzing...' : 'Analyze Recorded Answer'}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    />
+                  )}
                 </div>
               </div>
             </div>
