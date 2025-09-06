@@ -1,13 +1,13 @@
 'use client';
 import { useSession } from 'next-auth/react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, Suspense } from 'react';
 import axios from 'axios';
 import Header from '../../components/header';
 import { useSearchParams } from 'next/navigation';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-export default function UploadPage() {
+function UploadPageContent() {
   const { data: session, status } = useSession();
   const [userId, setUserId] = useState(null);
   const [skills, setSkills] = useState('');
@@ -218,5 +218,13 @@ export default function UploadPage() {
       </div>
     </main>
     </>
+  );
+}
+
+export default function UploadPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <UploadPageContent />
+    </Suspense>
   );
 }

@@ -135,10 +135,10 @@ export default function VideoRecordingTest() {
       <div className="mt-8 p-4 bg-gray-100 rounded">
         <h3 className="font-bold">Instructions:</h3>
         <ol className="list-decimal list-inside space-y-1 text-sm">
-          <li>Click "Start Recording" and allow camera permission</li>
+          <li>Click &quot;Start Recording&quot; and allow camera permission</li>
           <li>Record a short video (3-5 seconds)</li>
-          <li>Click "Stop Recording"</li>
-          <li>Click "Upload Video" to test the backend</li>
+          <li>Click &quot;Stop Recording&quot;</li>
+          <li>Click &quot;Upload Video&quot; to test the backend</li>
           <li>Check browser console (F12) for detailed logs</li>
         </ol>
       </div>

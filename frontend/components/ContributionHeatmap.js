@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 
 const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }) => {
   const [hoveredCell, setHoveredCell] = useState(null);
@@ -14,9 +14,9 @@ const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }
 
   useEffect(() => {
     processContributionData();
-  }, [data, timeRange]);
+  }, [processContributionData]);
 
-  const processContributionData = () => {
+  const processContributionData = useCallback(() => {
     const endDate = new Date();
     const startDate = new Date();
     
@@ -105,7 +105,7 @@ const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }
       currentStreak,
       contributionTypes
     });
-  };
+  }, [data, timeRange]);
 
   const getIntensityColor = (count) => {
     if (count === 0) return 'bg-gray-100 border-gray-200';

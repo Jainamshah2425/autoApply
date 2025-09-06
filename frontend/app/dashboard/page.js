@@ -1,6 +1,6 @@
 "use client";
 import { Button } from '@/components/ui/button';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
@@ -38,9 +38,9 @@ export default function DashboardPage() {
     if (domain) {
       fetchJobs();
     }
-  }, [domain]);
+  }, [domain, fetchJobs]);
 
-  const fetchJobs = async () => {
+  const fetchJobs = useCallback(async () => {
     try {
       setScrapeLoading(true);
       setError(null);
@@ -65,7 +65,7 @@ export default function DashboardPage() {
     } finally {
       setScrapeLoading(false);
     }
-  };
+  }, [domain]);
 
   const autoApply = async () => {
     if (!userId) return alert('User not loaded yet');

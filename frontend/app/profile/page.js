@@ -1,6 +1,7 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
+import Image from 'next/image';
 import axios from 'axios';
 import Header from '../../components/header';
 import ContributionHeatmap from '../../components/ContributionHeatmap';
@@ -32,7 +33,7 @@ export default function ProfilePage() {
     if (session?.user?.email) {
       loadUserProfile();
     }
-  }, [session?.user?.email]);
+  }, [session?.user?.email, loadUserProfile]);
 
   // Load contributions and stats when userProfile is ready or timeRange changes
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function ProfilePage() {
       }
     };
     fetchData();
-  }, [userProfile?._id, timeRange]);
+  }, [userProfile?._id, timeRange, loadContributionData, loadProfileStats]);
 
   // Real-time heatmap update listener
   useEffect(() => {
@@ -103,7 +104,7 @@ export default function ProfilePage() {
     return () => {
       window.removeEventListener('heatmapUpdated', handleHeatmapUpdate);
     };
-  }, [userProfile?._id]);
+  }, [userProfile?._id, loadContributionData, loadProfileStats]);
 
   // Auto-refresh data periodically (fallback for missed updates)
   useEffect(() => {
@@ -116,9 +117,9 @@ export default function ProfilePage() {
     }, 2 * 60 * 1000); // Refresh every 2 minutes
     
     return () => clearInterval(refreshInterval);
-  }, [userProfile?._id]);
+  }, [userProfile?._id, loadContributionData, loadProfileStats]);
 
-  const loadUserProfile = async () => {
+  const loadUserProfile = useCallback(async () => {
     try {
       setError(null); // Clear any previous errors
       console.log('Loading user profile for:', session.user.email);
@@ -164,9 +165,9 @@ export default function ProfilePage() {
         setError(`Failed to load profile: ${err.message}`);
       }
     }
-  };
+  }, [session?.user?.email, session?.user?.name, session?.user?.image]);
 
-  const loadContributionData = async () => {
+  const loadContributionData = useCallback(async () => {
     try {
       if (!userProfile?._id) return;
       
@@ -194,9 +195,9 @@ export default function ProfilePage() {
       console.error('Failed to load contribution data:', err);
       setContributionData([]);
     }
-  };
+  }, [userProfile?._id, timeRange]);
 
-  const loadProfileStats = async () => {
+  const loadProfileStats = useCallback(async () => {
     try {
       if (!userProfile?._id) return;
       
@@ -208,7 +209,7 @@ export default function ProfilePage() {
       console.error('Failed to load profile stats:', err);
       setProfileStats({});
     }
-  };
+  }, [userProfile?._id]);
 
   const updateProfile = async (updatedData) => {
     try {
@@ -326,9 +327,11 @@ export default function ProfilePage() {
           <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
             {/* Profile Picture */}
             <div className="relative">
-              <img
+              <Image
                 src={userProfile?.profilePicture || session?.user?.image || '/default-avatar.svg'}
                 alt="Profile Picture"
+                width={128}
+                height={128}
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
               />
               <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white flex items-center justify-center">

@@ -523,23 +523,6 @@ const DebugInfo = () => {
     setFeedback(null); // Clear feedback on new recording start
   }, [cameraPermission, requestMediaPermissions]);
 
-  const nextQuestion = useCallback(() => {
-    if (currentQuestionIndex < questions.length - 1) {
-      setCurrentQuestionIndex(currentQuestionIndex + 1);
-      setUserAnswer('');
-      setFeedback(null);
-      setRecordingState({
-        isRecording: false,
-        recordingStartTime: null,
-        audioBlob: null,
-        transcript: ''
-      });
-    } else {
-      // Complete session
-      completeSession();
-    }
-  }, [currentQuestionIndex, questions.length]);
-
   const completeSession = useCallback(async () => {
     setLoading(true);
     setError('');
@@ -594,6 +577,23 @@ const DebugInfo = () => {
       setLoading(false);
     }
   }, [sessionState.sessionId, sessionState.questionTimings, userId]);
+
+  const nextQuestion = useCallback(() => {
+    if (currentQuestionIndex < questions.length - 1) {
+      setCurrentQuestionIndex(currentQuestionIndex + 1);
+      setUserAnswer('');
+      setFeedback(null);
+      setRecordingState({
+        isRecording: false,
+        recordingStartTime: null,
+        audioBlob: null,
+        transcript: ''
+      });
+    } else {
+      // Complete session
+      completeSession();
+    }
+  }, [currentQuestionIndex, questions.length, completeSession]);
 
   const resetSession = useCallback(() => {
     setQuestions([]);
