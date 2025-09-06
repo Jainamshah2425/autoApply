@@ -11,6 +11,14 @@ import ProfileSettings from '../../components/ProfileSettings';
 // Use environment variable for API URL
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
+// Define navigation tabs outside component to prevent re-creation on each render
+const navigationTabs = [
+  { id: 'overview', name: 'Overview', icon: '📊' },
+  { id: 'contributions', name: 'Activity', icon: '🔥' },
+  { id: 'achievements', name: 'Achievements', icon: '🏆' },
+  { id: 'settings', name: 'Settings', icon: '⚙️' }
+];
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
@@ -441,12 +449,7 @@ export default function ProfilePage() {
         <div className="bg-white rounded-lg shadow-md mb-8">
           <div className="border-b border-gray-200">
             <nav className="-mb-px flex">
-              {[
-                { id: 'overview', name: 'Overview', icon: '📊' },
-                { id: 'contributions', name: 'Activity', icon: '🔥' },
-                { id: 'achievements', name: 'Achievements', icon: '🏆' },
-                { id: 'settings', name: 'Settings', icon: '⚙️' }
-              ].map((tab) => (
+              {navigationTabs.map((tab) => (
                 <button
                   key={tab.id}
                   onClick={() => setActiveTab(tab.id)}
