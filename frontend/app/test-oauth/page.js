@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 export default function TestOAuthPage() {
   const { data: session } = useSession();

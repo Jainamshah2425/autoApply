@@ -5,7 +5,7 @@ import axios from 'axios';
 import Header from '../../components/header';
 import { useSearchParams } from 'next/navigation';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 function UploadPageContent() {
   const { data: session, status } = useSession();

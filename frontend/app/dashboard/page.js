@@ -6,7 +6,7 @@ import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Header from '../../components/header';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();

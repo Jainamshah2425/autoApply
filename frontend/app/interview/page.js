@@ -9,7 +9,7 @@ import SessionInsights from '../../components/SessionInsights';
 import QuestionAnalytics from '../../components/QuestionAnalytics';
 
 // Use environment variable for API URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 const ReactMediaRecorder = dynamic(
   () => import('react-media-recorder').then((mod) => mod.ReactMediaRecorder),

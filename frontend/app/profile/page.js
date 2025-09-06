@@ -9,7 +9,7 @@ import ProfileStats from '../../components/ProfileStats';
 import ProfileSettings from '../../components/ProfileSettings';
 
 // Use environment variable for API URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
