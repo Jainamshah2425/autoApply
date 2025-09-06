@@ -1,7 +1,6 @@
 "use client";
+import React, { useEffect, useCallback, useState } from 'react';
 import { Button } from '@/components/ui/button';
-import { useEffect, useCallback } from 'react';
-import { useState } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Header from '../../components/header';
@@ -33,13 +32,6 @@ export default function DashboardPage() {
     }
   }, [session]);
 
-  // 🌐 Fetch jobs when domain changes
-  useEffect(() => {
-    if (domain) {
-      fetchJobs();
-    }
-  }, [domain, fetchJobs]);
-
   const fetchJobs = useCallback(async () => {
     try {
       setScrapeLoading(true);
@@ -66,6 +58,13 @@ export default function DashboardPage() {
       setScrapeLoading(false);
     }
   }, [domain]);
+
+  // 🌐 Fetch jobs when domain changes
+  useEffect(() => {
+    if (domain && mounted) {
+      fetchJobs();
+    }
+  }, [domain, mounted, fetchJobs]);
 
   const autoApply = async () => {
     if (!userId) return alert('User not loaded yet');
