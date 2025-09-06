@@ -34,6 +34,84 @@ export default function ProfilePage() {
     setMounted(true);
   }, []);
 
+  // Define useCallback functions first to prevent "Cannot access before initialization" error
+  const loadUserProfile = useCallback(async () => {
+    try {
+      setError(null); // Clear any previous errors
+      console.log('Loading user profile for:', session.user.email);
+      
+      const response = await axios.get(
+        `${API_URL}/api/user/by-email/${session.user.email}`,
+        {
+          timeout: 10000, // 10 second timeout
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      
+      console.log('User profile loaded successfully:', response.data);
+      setUserProfile(response.data);
+    } catch (err) {
+      console.error('Failed to load user profile:', err.response || err);
+      
+      let errorMessage = 'Failed to load user profile';
+      if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Request timeout - please check your connection';
+      } else if (err.response?.status === 404) {
+        errorMessage = 'User not found. Please sign up first.';
+      } else if (err.response?.status >= 500) {
+        errorMessage = 'Server error - please try again later';
+      }
+      
+      setError(errorMessage);
+    }
+  }, [session?.user?.email]);
+
+  const loadContributionData = useCallback(async () => {
+    try {
+      if (!userProfile?._id) return;
+      
+      const endDate = new Date();
+      const startDate = new Date();
+      
+      switch (timeRange) {
+        case '3months':
+          startDate.setMonth(endDate.getMonth() - 3);
+          break;
+        case '6months':
+          startDate.setMonth(endDate.getMonth() - 6);
+          break;
+        case 'year':
+        default:
+          startDate.setFullYear(endDate.getFullYear() - 1);
+          break;
+      }
+
+      const response = await axios.get(
+        `${API_URL}/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+      );
+      setContributionData(response.data);
+    } catch (err) {
+      console.error('Failed to load contribution data:', err);
+      setContributionData([]);
+    }
+  }, [userProfile?._id, timeRange]);
+
+  const loadProfileStats = useCallback(async () => {
+    try {
+      if (!userProfile?._id) return;
+      
+      const response = await axios.get(
+        `${API_URL}/api/user/stats/${userProfile._id}`
+      );
+      setProfileStats(response.data);
+    } catch (err) {
+      console.error('Failed to load profile stats:', err);
+      setProfileStats({});
+    }
+  }, [userProfile?._id]);
+
   // Load basic user profile once session email is available
   useEffect(() => {
     if (session?.user?.email) {
@@ -129,98 +207,6 @@ export default function ProfilePage() {
     
     return () => clearInterval(refreshInterval);
   }, [userProfile?._id, loadContributionData, loadProfileStats]);
-
-  const loadUserProfile = useCallback(async () => {
-    try {
-      setError(null); // Clear any previous errors
-      console.log('Loading user profile for:', session.user.email);
-      
-      const response = await axios.get(
-        `${API_URL}/api/user/by-email/${session.user.email}`,
-        {
-          timeout: 10000, // 10 second timeout
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-      
-      console.log('User profile loaded successfully:', response.data);
-      setUserProfile(response.data);
-    } catch (err) {
-      console.error('Failed to load user profile:', err);
-      
-      // More specific error handling
-      if (err.code === 'ECONNREFUSED') {
-        setError('Backend server is not running. Please start the backend on port 5000.');
-      } else if (err.response?.status === 404) {
-        // User not found, try to create them
-        console.log('User not found, attempting to create...');
-        try {
-          const createResponse = await axios.post(`${API_URL}/api/user/create`, {
-            email: session.user.email,
-            name: session.user.name,
-            image: session.user.image
-          });
-          console.log('User created successfully:', createResponse.data);
-          setUserProfile(createResponse.data.user);
-        } catch (createErr) {
-          console.error('Failed to create user:', createErr);
-          setError('Failed to create user profile. Please check your connection.');
-        }
-      } else if (err.response?.status >= 500) {
-        setError('Server error. Please try again later.');
-      } else if (err.code === 'ENOTFOUND' || err.message.includes('Network Error')) {
-        setError('Network error. Please check your internet connection and ensure the backend is running.');
-      } else {
-        setError(`Failed to load profile: ${err.message}`);
-      }
-    }
-  }, [session?.user?.email, session?.user?.name, session?.user?.image]);
-
-  const loadContributionData = useCallback(async () => {
-    try {
-      if (!userProfile?._id) return;
-      
-      const endDate = new Date();
-      const startDate = new Date();
-      
-      switch (timeRange) {
-        case '3months':
-          startDate.setMonth(endDate.getMonth() - 3);
-          break;
-        case '6months':
-          startDate.setMonth(endDate.getMonth() - 6);
-          break;
-        case 'year':
-        default:
-          startDate.setFullYear(endDate.getFullYear() - 1);
-          break;
-      }
-
-      const response = await axios.get(
-        `${API_URL}/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
-      );
-      setContributionData(response.data);
-    } catch (err) {
-      console.error('Failed to load contribution data:', err);
-      setContributionData([]);
-    }
-  }, [userProfile?._id, timeRange]);
-
-  const loadProfileStats = useCallback(async () => {
-    try {
-      if (!userProfile?._id) return;
-      
-      const response = await axios.get(
-        `${API_URL}/api/user/stats/${userProfile._id}`
-      );
-      setProfileStats(response.data);
-    } catch (err) {
-      console.error('Failed to load profile stats:', err);
-      setProfileStats({});
-    }
-  }, [userProfile?._id]);
 
   const updateProfile = async (updatedData) => {
     try {
