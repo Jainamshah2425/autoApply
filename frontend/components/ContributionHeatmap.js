@@ -12,10 +12,6 @@ const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }
     contributionTypes: {}
   });
 
-  useEffect(() => {
-    processContributionData();
-  }, [processContributionData]);
-
   const processContributionData = useCallback(() => {
     const endDate = new Date();
     const startDate = new Date();
@@ -106,6 +102,10 @@ const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }
       contributionTypes
     });
   }, [data, timeRange]);
+
+  useEffect(() => {
+    processContributionData();
+  }, [processContributionData]);
 
   const getIntensityColor = (count) => {
     if (count === 0) return 'bg-gray-100 border-gray-200';
