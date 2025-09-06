@@ -13,6 +13,7 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onren
 
 export default function ProfilePage() {
   const { data: session, status } = useSession();
+  const [mounted, setMounted] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
   const [contributionData, setContributionData] = useState([]);
   const [profileStats, setProfileStats] = useState({});
@@ -27,6 +28,11 @@ export default function ProfilePage() {
     showStats: true,
     showContributions: true
   });
+
+  // Set mounted state
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Load basic user profile once session email is available
   useEffect(() => {
@@ -304,6 +310,20 @@ export default function ProfilePage() {
           <p className="text-gray-600">
             You need to be logged in to access your profile page.
           </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show loading state until component is mounted
+  if (!mounted) {
+    return (
+      <div className="min-h-screen bg-gray-50">
+        <Header />
+        <div className="max-w-6xl mx-auto px-4 py-8">
+          <div className="flex justify-center items-center h-64">
+            <div className="text-gray-600">Loading...</div>
+          </div>
         </div>
       </div>
     );

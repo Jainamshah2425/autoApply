@@ -10,11 +10,11 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onren
 
 export default function DashboardPage() {
   const { data: session, status } = useSession();
+  const [mounted, setMounted] = useState(false);
   const [jobs, setJobs] = useState([]);
   const [userId, setUserId] = useState(null);
   const [loading, setLoading] = useState(false);
   const [scrapeLoading, setScrapeLoading] = useState(false);
-  const [mounted, setMounted] = useState(false);
   const [domain, setDomain] = useState('web-development');
   const [error, setError] = useState(null);
   const [scrapeInfo, setScrapeInfo] = useState(null);

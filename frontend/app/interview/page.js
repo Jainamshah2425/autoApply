@@ -1,6 +1,5 @@
 'use client';
-import React from 'react';
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Header from '../../components/header';
@@ -17,9 +16,9 @@ const ReactMediaRecorder = dynamic(
 );
 
 const VideoPreview = ({ stream }) => {
-  const videoRef = React.useRef(null);
+  const videoRef = useRef(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     if (videoRef.current && stream) {
       videoRef.current.srcObject = stream;
     }
@@ -30,6 +29,7 @@ const VideoPreview = ({ stream }) => {
 
 export default function InterviewPrepPage() {
   const { data: session, status } = useSession();
+  const [mounted, setMounted] = useState(false);
   const [jobDescription, setJobDescription] = useState('');
   const [questions, setQuestions] = useState([]);
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -72,6 +72,11 @@ export default function InterviewPrepPage() {
   // Camera permission state
   const [cameraPermission, setCameraPermission] = useState('unknown'); // 'granted', 'denied', 'prompt', 'unknown'
   const [permissionError, setPermissionError] = useState('');
+
+  // Set mounted state
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Clear error after 5 seconds
   useEffect(() => {
@@ -204,8 +209,10 @@ export default function InterviewPrepPage() {
 
   // Check permissions when component mounts
   useEffect(() => {
-    checkMediaPermissions();
-  }, [checkMediaPermissions]);
+    if (mounted) {
+      checkMediaPermissions();
+    }
+  }, [mounted, checkMediaPermissions]);
 
   // Add this enhanced debugging version to your page.js
 // Replace the generateQuestions function with this version:
@@ -744,6 +751,11 @@ const DebugInfo = () => {
         </div>
       </main>
     );
+  }
+
+  // Prevent hydration mismatch
+  if (!mounted) {
+    return <div>Loading...</div>;
   }
 
   return (
