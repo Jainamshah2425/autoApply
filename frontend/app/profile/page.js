@@ -19,6 +19,12 @@ const navigationTabs = [
   { id: 'settings', name: 'Settings', icon: '⚙️' }
 ];
 
+// Define date formatting options to prevent re-creation on each render
+const dateFormatOptions = { 
+  year: 'numeric', 
+  month: 'long' 
+};
+
 export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
@@ -119,6 +125,14 @@ export default function ProfilePage() {
       setProfileStats({});
     }
   }, [userProfile?._id]);
+
+  // Helper function to toggle privacy settings
+  const togglePrivacySetting = (key) => {
+    setPrivacySettings(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
 
   // Load basic user profile once session email is available
   useEffect(() => {
@@ -427,10 +441,7 @@ export default function ProfilePage() {
                 )}
 
                 <div className="text-gray-500">
-                  Joined {new Date(userProfile?.createdAt || Date.now()).toLocaleDateString('en-US', { 
-                    year: 'numeric', 
-                    month: 'long' 
-                  })}
+                  Joined {new Date(userProfile?.createdAt || Date.now()).toLocaleDateString('en-US', dateFormatOptions)}
                 </div>
               </div>
 
@@ -535,10 +546,7 @@ export default function ProfilePage() {
                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                     </label>
                     <button
-                      onClick={() => setPrivacySettings({
-                        ...privacySettings,
-                        [key]: !value
-                      })}
+                      onClick={() => togglePrivacySetting(key)}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
                         value ? 'bg-blue-600' : 'bg-gray-200'
                       }`}
