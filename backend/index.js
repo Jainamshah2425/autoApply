@@ -26,7 +26,11 @@ app.get('/', (req, res) => {
 });
 
 app.use(cors({
-  origin: ['http://localhost:3000', 'https://your-frontend-url.vercel.app'],
+  origin: [
+    'http://localhost:3000', 
+    'https://auto-apply-seven.vercel.app',
+    'https://your-frontend-url.vercel.app'
+  ],
   credentials: true
 }));
 app.use(express.json());
