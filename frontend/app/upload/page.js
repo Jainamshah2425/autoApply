@@ -105,7 +105,7 @@ function UploadPageContent() {
   };
 
   const connectGmail = () => {
-    if (userId) {
+    if (userId && mounted && typeof window !== 'undefined') {
       window.location.href = `${API_URL}/api/auth/google?userId=${userId}`;
     }
   };

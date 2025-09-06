@@ -557,21 +557,23 @@ const DebugInfo = () => {
         // Optional: Trigger real-time refresh if user is on profile page
         // This would require implementing a WebSocket or polling mechanism
         // For now, we'll use localStorage to signal profile page to refresh
-        try {
-          const heatmapUpdateEvent = {
-            timestamp: Date.now(),
-            type: 'interview_completed',
-            date: res.data.heatmapUpdate.date || new Date().toISOString().split('T')[0],
-            userId: userId
-          };
-          localStorage.setItem('heatmapUpdate', JSON.stringify(heatmapUpdateEvent));
-          
-          // Dispatch custom event for real-time updates
-          window.dispatchEvent(new CustomEvent('heatmapUpdated', { 
-            detail: heatmapUpdateEvent 
-          }));
-        } catch (storageError) {
-          console.warn('Failed to store heatmap update event:', storageError);
+        if (mounted && typeof window !== 'undefined') {
+          try {
+            const heatmapUpdateEvent = {
+              timestamp: Date.now(),
+              type: 'interview_completed',
+              date: res.data.heatmapUpdate.date || new Date().toISOString().split('T')[0],
+              userId: userId
+            };
+            localStorage.setItem('heatmapUpdate', JSON.stringify(heatmapUpdateEvent));
+            
+            // Dispatch custom event for real-time updates
+            window.dispatchEvent(new CustomEvent('heatmapUpdated', { 
+              detail: heatmapUpdateEvent 
+            }));
+          } catch (storageError) {
+            console.warn('Failed to store heatmap update event:', storageError);
+          }
         }
       } else {
         console.warn('⚠️ Heatmap update failed:', res.data.heatmapUpdate);
@@ -685,8 +687,10 @@ const DebugInfo = () => {
       
       setUploadStatus('Resume uploaded successfully!');
       setResumeFile(null);
-      const fileInput = document.querySelector('input[type="file"]');
-      if (fileInput) fileInput.value = '';
+      if (mounted && typeof document !== 'undefined') {
+        const fileInput = document.querySelector('input[type="file"]');
+        if (fileInput) fileInput.value = '';
+      }
       
     } catch (err) {
       if (err.response) {

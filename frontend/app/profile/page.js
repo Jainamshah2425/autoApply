@@ -73,44 +73,49 @@ export default function ProfilePage() {
       }
     };
 
-    // Listen for custom heatmap update events
-    window.addEventListener('heatmapUpdated', handleHeatmapUpdate);
-    
-    // Also check localStorage for missed updates (in case page was loaded after update)
-    const checkForMissedUpdates = () => {
-      try {
-        const storedUpdate = localStorage.getItem('heatmapUpdate');
-        if (storedUpdate) {
-          const updateEvent = JSON.parse(storedUpdate);
-          
-          // If update is recent (within last 5 minutes) and for current user
-          const updateAge = Date.now() - updateEvent.timestamp;
-          const fiveMinutes = 5 * 60 * 1000;
-          
-          if (updateAge < fiveMinutes && updateEvent.userId === userProfile?._id) {
-            console.log('📊 Found recent heatmap update, refreshing data...');
-            loadContributionData();
-            loadProfileStats();
+    // Only access browser APIs after component is mounted
+    if (mounted && typeof window !== 'undefined') {
+      // Listen for custom heatmap update events
+      window.addEventListener('heatmapUpdated', handleHeatmapUpdate);
+      
+      // Also check localStorage for missed updates (in case page was loaded after update)
+      const checkForMissedUpdates = () => {
+        try {
+          const storedUpdate = localStorage.getItem('heatmapUpdate');
+          if (storedUpdate) {
+            const updateEvent = JSON.parse(storedUpdate);
             
-            // Clear the stored update to prevent repeated refreshes
-            localStorage.removeItem('heatmapUpdate');
+            // If update is recent (within last 5 minutes) and for current user
+            const updateAge = Date.now() - updateEvent.timestamp;
+            const fiveMinutes = 5 * 60 * 1000;
+            
+            if (updateAge < fiveMinutes && updateEvent.userId === userProfile?._id) {
+              console.log('📊 Found recent heatmap update, refreshing data...');
+              loadContributionData();
+              loadProfileStats();
+              
+              // Clear the stored update to prevent repeated refreshes
+              localStorage.removeItem('heatmapUpdate');
+            }
           }
+        } catch (error) {
+          console.warn('Failed to check for missed heatmap updates:', error);
         }
-      } catch (error) {
-        console.warn('Failed to check for missed heatmap updates:', error);
-      }
-    };
+      };
 
-    // Check for missed updates when component mounts
-    if (userProfile?._id) {
-      checkForMissedUpdates();
+      // Check for missed updates when component mounts
+      if (userProfile?._id) {
+        checkForMissedUpdates();
+      }
     }
 
     // Cleanup
     return () => {
-      window.removeEventListener('heatmapUpdated', handleHeatmapUpdate);
+      if (mounted && typeof window !== 'undefined') {
+        window.removeEventListener('heatmapUpdated', handleHeatmapUpdate);
+      }
     };
-  }, [userProfile?._id, loadContributionData, loadProfileStats]);
+  }, [mounted, userProfile?._id, loadContributionData, loadProfileStats]);
 
   // Auto-refresh data periodically (fallback for missed updates)
   useEffect(() => {
