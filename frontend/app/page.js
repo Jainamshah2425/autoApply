@@ -21,6 +21,9 @@ export default function Home() {
           <Link href="/interview">
             <button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl transition">Interview</button>
           </Link>
+          <Link href="/live-interview">
+            <button className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-2 rounded-xl transition">🎙️ Live AI</button>
+          </Link>
         </div>
       </section>
     </main>

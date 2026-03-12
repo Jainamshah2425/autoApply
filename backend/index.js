@@ -42,6 +42,7 @@ const authRoutes = require('./routes/auth.js');
 const emailRoutes = require('./routes/email.js');
 const interviewRoutes = require('./routes/interview.js');
 const profileRoutes = require('./routes/profile.js');
+const liveInterviewRoutes = require('./routes/liveInterview.js');
 
 app.use('/api/llm', llmRoutes);
 app.use('/api/user', userRoutes);
@@ -50,6 +51,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/email', emailRoutes);
 app.use('/api/interview', interviewRoutes);
 app.use('/api/profile', profileRoutes);
+app.use('/api/live-interview', liveInterviewRoutes);
 
 
 const { scheduleAutoApply } = require('./cron/dailyApply.js');
