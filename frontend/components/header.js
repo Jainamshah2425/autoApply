@@ -20,6 +20,7 @@ export default function Header() {
         <Link href="/dashboard" className="hover:text-blue-300 transition-colors">Dashboard</Link>
         <Link href="/interview" className="hover:text-blue-300 transition-colors">Interview</Link>
         <Link href="/live-interview" className="hover:text-purple-300 transition-colors">Live AI</Link>
+        <Link href="/aptitude" className="hover:text-cyan-300 transition-colors">Aptitude</Link>
         <Link href="/profile" className="hover:text-blue-300 transition-colors">Profile</Link>
         
       
