@@ -32,7 +32,7 @@ const liveInterviewSessionSchema = new mongoose.Schema({
   // Structured per-question tracking
   questions: [{
     questionText: String,
-    questionType: { type: String, enum: ['behavioral', 'technical', 'coding', 'follow-up'] },
+    questionType: { type: String }, // LLM returns varied types: behavioral, technical, conceptual, problem-solving, situational, follow-up, hint, closing, etc.
     userAnswer: String,
     aiFollowUp: String,
     score: Number,
