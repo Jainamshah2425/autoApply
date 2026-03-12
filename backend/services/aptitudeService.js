@@ -3,76 +3,208 @@
 
 const AptitudeQuestion = require('../models/AptitudeQuestion.js');
 const AptitudeAttempt = require('../models/AptitudeAttempt.js');
+const { getLLMResponse } = require('./llm.js');
+
+// ─── Topic definitions for LLM generation ─────────────────────
+const TOPIC_MAP = {
+  quantitative: ['percentages', 'profit-loss', 'time-work', 'speed-time-distance', 'ratios', 'interest', 'number-series', 'probability', 'permutation-combination', 'averages'],
+  logical: ['syllogisms', 'blood-relations', 'coding-decoding', 'seating-arrangement', 'pattern-recognition', 'data-sufficiency'],
+  verbal: ['reading-comprehension', 'sentence-correction', 'analogies', 'fill-in-blanks', 'para-jumbles']
+};
 
 /**
- * Generate a test with questions based on user preferences and weak areas.
+ * Generate questions dynamically via LLM.
+ * Returns an array of question objects matching the AptitudeQuestion schema.
+ */
+async function generateDynamicQuestions(category, topic, difficulty, count) {
+  const topicList = topic
+    ? [topic]
+    : (category && category !== 'mixed')
+      ? TOPIC_MAP[category] || []
+      : [...TOPIC_MAP.quantitative, ...TOPIC_MAP.logical, ...TOPIC_MAP.verbal];
+
+  const topicStr = topicList.join(', ');
+  const diffStr = difficulty || 'mixed (easy, medium, hard)';
+  const catStr = (category && category !== 'mixed') ? category : 'mixed (quantitative, logical, verbal)';
+
+  const prompt = `You are an expert placement test question generator for Indian engineering placements (TCS, Infosys, Wipro, Cognizant, Capgemini, Accenture).
+
+Generate EXACTLY ${count} unique multiple-choice questions.
+
+Category: ${catStr}
+Topics to cover: ${topicStr}
+Difficulty: ${diffStr}
+
+RULES:
+- Each question must have EXACTLY 4 options
+- Vary the topics — don't repeat the same topic consecutively
+- Make questions DIFFERENT from standard textbook questions — use creative numbers and scenarios
+- Include a clear explanation for each answer
+- Include a shortcut method where applicable
+- Assign realistic company tags
+
+Return ONLY a valid JSON array in this exact format:
+[
+  {
+    "questionText": "The question text here",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correctAnswer": 0,
+    "explanation": "Step-by-step solution",
+    "shortcutMethod": "Quick trick if any, or null",
+    "topic": "topic-name-in-kebab-case",
+    "category": "quantitative|logical|verbal",
+    "difficulty": "easy|medium|hard",
+    "companyTags": ["TCS", "Infosys"],
+    "averageTimeSeconds": 45
+  }
+]
+
+Return ONLY the JSON array. No markdown, no code blocks, no extra text.`;
+
+  try {
+    const response = await getLLMResponse(prompt);
+    let parsed;
+
+    // Try direct parse
+    try {
+      parsed = JSON.parse(response.trim());
+    } catch {
+      // Extract JSON array from response
+      const match = response.match(/\[[\s\S]*\]/);
+      if (match) parsed = JSON.parse(match[0]);
+    }
+
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      throw new Error('LLM returned invalid format');
+    }
+
+    // Validate and sanitize each question
+    return parsed
+      .filter(q => q.questionText && Array.isArray(q.options) && q.options.length >= 2 && typeof q.correctAnswer === 'number')
+      .map(q => ({
+        questionText: q.questionText,
+        options: q.options.slice(0, 4),
+        correctAnswer: Math.min(q.correctAnswer, q.options.length - 1),
+        explanation: q.explanation || 'No explanation provided',
+        shortcutMethod: q.shortcutMethod || null,
+        topic: q.topic || 'general',
+        category: q.category || category || 'quantitative',
+        difficulty: ['easy', 'medium', 'hard'].includes(q.difficulty) ? q.difficulty : 'medium',
+        companyTags: q.companyTags || [],
+        averageTimeSeconds: q.averageTimeSeconds || 60,
+        _isDynamic: true  // flag to identify LLM-generated questions
+      }));
+  } catch (err) {
+    console.error('Dynamic question generation failed:', err.message);
+    return []; // fallback to static bank
+  }
+}
+
+/**
+ * Get question IDs the user has already seen in recent attempts.
+ */
+async function getSeenQuestionIds(userId) {
+  const recentAttempts = await AptitudeAttempt.find({ userId })
+    .sort({ createdAt: -1 })
+    .limit(15)  // look at last 15 tests
+    .select('questions.questionId');
+
+  const seenIds = new Set();
+  for (const attempt of recentAttempts) {
+    for (const q of (attempt.questions || [])) {
+      if (q.questionId) seenIds.add(q.questionId.toString());
+    }
+  }
+  return [...seenIds];
+}
+
+/**
+ * Generate a test: LLM-dynamic questions first, fallback to unseen static questions.
  */
 async function generateTest(userId, options = {}) {
   const {
-    category = 'mixed',        // quantitative, logical, verbal, or mixed
-    topic = null,              // specific topic, or null for all
-    difficulty = null,         // easy, medium, hard, or null for mixed
+    category = 'mixed',
+    topic = null,
+    difficulty = null,
     questionCount = 20,
-    testType = 'practice',     // practice, timed, topic-wise
+    testType = 'practice',
     timeLimitMinutes = null
   } = options;
 
-  // Build filter
-  const filter = {};
-  if (category && category !== 'mixed') filter.category = category;
-  if (topic) filter.topic = topic;
-  if (difficulty) filter.difficulty = difficulty;
+  console.log(`📝 Generating ${testType} test: ${questionCount} questions, category=${category}, topic=${topic}`);
 
-  // Adaptive: check user's weak topics from past attempts
-  let weakTopics = [];
-  if (!topic) {
-    try {
-      weakTopics = await getWeakTopics(userId);
-    } catch (err) {
-      console.warn('Could not fetch weak topics:', err.message);
-    }
+  // Step 1: Try to generate dynamic questions via LLM
+  let dynamicQuestions = [];
+  try {
+    dynamicQuestions = await generateDynamicQuestions(category, topic, difficulty, questionCount);
+    console.log(`🤖 LLM generated ${dynamicQuestions.length} dynamic questions`);
+  } catch (err) {
+    console.warn('LLM generation failed, falling back to static bank:', err.message);
   }
 
+  // Step 2: If we have enough dynamic questions, save them to DB and use them
   let questions = [];
 
-  if (weakTopics.length > 0 && !topic) {
-    // 40% from weak topics, 60% general
-    const weakCount = Math.floor(questionCount * 0.4);
-    const generalCount = questionCount - weakCount;
+  if (dynamicQuestions.length >= questionCount) {
+    // Save dynamic questions to DB for persistence and future re-use
+    const savedDocs = await AptitudeQuestion.insertMany(
+      dynamicQuestions.map(q => {
+        const { _isDynamic, ...rest } = q;
+        return rest;
+      })
+    );
+    questions = savedDocs.map(doc => doc.toObject());
+    console.log(`💾 Saved ${savedDocs.length} new questions to DB`);
 
-    const weakQs = await AptitudeQuestion.aggregate([
-      { $match: { ...filter, topic: { $in: weakTopics } } },
-      { $sample: { size: weakCount } }
-    ]);
-
-    const generalQs = await AptitudeQuestion.aggregate([
-      { $match: { ...filter, topic: { $nin: weakTopics } } },
-      { $sample: { size: generalCount } }
-    ]);
-
-    questions = [...weakQs, ...generalQs];
   } else {
-    questions = await AptitudeQuestion.aggregate([
-      { $match: filter },
-      { $sample: { size: questionCount } }
-    ]);
-  }
+    // Step 3: Supplement with unseen static questions
+    const seenIds = await getSeenQuestionIds(userId);
+    const seenObjectIds = seenIds.map(id => {
+      try { return new (require('mongoose').Types.ObjectId)(id); } catch { return null; }
+    }).filter(Boolean);
 
-  // If not enough questions, relax filters
-  if (questions.length < questionCount) {
-    const moreNeeded = questionCount - questions.length;
-    const existingIds = questions.map(q => q._id);
-    const more = await AptitudeQuestion.aggregate([
-      { $match: { _id: { $nin: existingIds } } },
-      { $sample: { size: moreNeeded } }
+    const filter = {};
+    if (category && category !== 'mixed') filter.category = category;
+    if (topic) filter.topic = topic;
+    if (difficulty) filter.difficulty = difficulty;
+    if (seenObjectIds.length > 0) filter._id = { $nin: seenObjectIds };
+
+    // Get unseen questions from static bank
+    const staticQuestions = await AptitudeQuestion.aggregate([
+      { $match: filter },
+      { $sample: { size: questionCount - dynamicQuestions.length } }
     ]);
-    questions = [...questions, ...more];
+
+    // If still not enough (user has seen everything), reset and allow re-use
+    if (staticQuestions.length + dynamicQuestions.length < questionCount) {
+      console.log('User has seen most questions — allowing some repeats');
+      const { _id, ...filterWithoutId } = filter;
+      const moreQs = await AptitudeQuestion.aggregate([
+        { $match: filterWithoutId },
+        { $sample: { size: questionCount - staticQuestions.length - dynamicQuestions.length } }
+      ]);
+      staticQuestions.push(...moreQs);
+    }
+
+    // If we got dynamic questions, save them to DB first
+    if (dynamicQuestions.length > 0) {
+      const savedDynamic = await AptitudeQuestion.insertMany(
+        dynamicQuestions.map(q => { const { _isDynamic, ...rest } = q; return rest; })
+      );
+      questions = [...savedDynamic.map(d => d.toObject()), ...staticQuestions];
+    } else {
+      questions = staticQuestions;
+    }
   }
 
   // Shuffle
   for (let i = questions.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [questions[i], questions[j]] = [questions[j], questions[i]];
+  }
+
+  if (questions.length === 0) {
+    throw new Error('No questions available. Please seed the question bank first.');
   }
 
   // Create attempt record
@@ -94,6 +226,8 @@ async function generateTest(userId, options = {}) {
   });
 
   await attempt.save();
+
+  console.log(`✅ Test generated: ${questions.length} questions (attempt ${attempt._id})`);
 
   return {
     attemptId: attempt._id,
