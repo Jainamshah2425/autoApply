@@ -468,22 +468,32 @@ export default function LiveInterviewPage() {
         <div className={`flex flex-col ${mode === 'coding' ? 'w-1/2 border-r border-gray-700' : 'flex-1'}`}>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
-            {messages.map((msg, i) => (
-              <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-                <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                  msg.role === 'user'
-                    ? 'bg-blue-600 text-white rounded-br-md'
-                    : 'bg-gray-800 text-gray-100 border border-gray-700 rounded-bl-md'
-                }`}>
-                  {msg.role === 'assistant' && (
-                    <span className="text-xs text-gray-500 block mb-1">
-                      {msg.isFollowUp ? '🔄 Follow-up' : '❓ Question'}
-                    </span>
-                  )}
-                  <p className="text-sm whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+            {messages.map((msg, i) => {
+              // Ensure we always render a string to avoid React errors
+              const content =
+                typeof msg.content === 'string'
+                  ? msg.content
+                  : msg.content != null
+                    ? JSON.stringify(msg.content, null, 2)
+                    : '';
+
+              return (
+                <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div className={`max-w-[80%] rounded-2xl px-4 py-3 ${
+                    msg.role === 'user'
+                      ? 'bg-blue-600 text-white rounded-br-md'
+                      : 'bg-gray-800 text-gray-100 border border-gray-700 rounded-bl-md'
+                  }`}>
+                    {msg.role === 'assistant' && (
+                      <span className="text-xs text-gray-500 block mb-1">
+                        {msg.isFollowUp ? '🔄 Follow-up' : '❓ Question'}
+                      </span>
+                    )}
+                    <p className="text-sm whitespace-pre-wrap leading-relaxed">{content}</p>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
             {isLoading && (
               <div className="flex justify-start">
                 <div className="bg-gray-800 rounded-2xl px-4 py-3 border border-gray-700">
