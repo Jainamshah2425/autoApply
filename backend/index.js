@@ -3,6 +3,8 @@ const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
 const dotenv = require('dotenv');
+const errorHandler = require('./middleware/errorHandler');
+const validate = require('./middleware/validate');
 
 dotenv.config();
 
@@ -25,12 +27,13 @@ app.get('/', (req, res) => {
   });
 });
 
+const corsOrigins = process.env.CORS_ORIGINS?.split(',') || [
+  'http://localhost:3000',
+  'https://auto-apply-seven.vercel.app'
+];
+
 app.use(cors({
-  origin: [
-    'http://localhost:3000', 
-    'https://auto-apply-seven.vercel.app',
-    'https://your-frontend-url.vercel.app'
-  ],
+  origin: corsOrigins,
   credentials: true
 }));
 app.use(express.json());
@@ -58,6 +61,12 @@ app.use('/api/aptitude', aptitudeRoutes);
 
 const { scheduleAutoApply } = require('./cron/dailyApply.js');
 const { scheduleKeepAlive } = require('./cron/keepAlive.js');
+
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found' });
+});
+
+app.use(errorHandler);
 
 const PORT = process.env.PORT || 5000;
 

@@ -1,12 +1,27 @@
-// routes/llm.js
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Resume = require('../models/Resume');
 const { generateCoverLetter } = require('../services/coverLetter');
 const { generateImprovedAnswer } = require('../services/llm');
+const validate = require('../middleware/validate');
 
-router.post('/generate-cover-letter', async (req, res) => {
+const coverLetterSchema = {
+  body: {
+    jobTitle: { required: true, type: 'string', minLength: 1 },
+    companyName: { required: true, type: 'string', minLength: 1 },
+    userId: { required: true, type: 'string' }
+  }
+};
+
+const improvedAnswerSchema = {
+  body: {
+    question: { required: true, type: 'string', minLength: 1 },
+    userAnswer: { required: true, type: 'string', minLength: 1 }
+  }
+};
+
+router.post('/generate-cover-letter', validate(coverLetterSchema), async (req, res, next) => {
   const { jobTitle, companyName, skills, userId } = req.body;
 
   try {
@@ -18,16 +33,14 @@ router.post('/generate-cover-letter', async (req, res) => {
     const letter = await generateCoverLetter({ jobTitle, companyName, skills, resumeText: resume.text });
     res.json({ letter });
   } catch (err) {
-    console.error(err.response?.data || err);
-    res.status(500).json({ error: 'Failed to generate cover letter' });
+    next(err);
   }
 });
 
-router.post('/generate-improved-answer', async (req, res) => {
+router.post('/generate-improved-answer', validate(improvedAnswerSchema), async (req, res, next) => {
   const { question, userAnswer, jobDescription, userId } = req.body;
 
   try {
-    // Optional: Fetch user's resume for context
     let resumeText = '';
     if (userId) {
       const resume = await Resume.findOne({ user: userId }).sort({ createdAt: -1 });
@@ -45,13 +58,8 @@ router.post('/generate-improved-answer', async (req, res) => {
     
     res.json({ improvedAnswer });
   } catch (err) {
-    console.error(err.response?.data || err);
-    res.status(500).json({ error: 'Failed to generate improved answer' });
+    next(err);
   }
 });
 
 module.exports = router;
-
-
-module.exports = router;
-
