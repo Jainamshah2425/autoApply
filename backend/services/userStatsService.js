@@ -107,6 +107,11 @@ const syncUserStats = async (userId) => {
       ? Number((totalScores.reduce((a, b) => a + b, 0) / totalScores.length).toFixed(1))
       : 0;
 
+    const previousAverage = user.stats?.averageScore || 0;
+    const improvementRate = previousAverage > 0
+      ? Number((((averageScore - previousAverage) / previousAverage) * 100).toFixed(1))
+      : 0;
+
     // Calculate level from existing XP or estimate
     const currentXP = user.stats?.experiencePoints || user.stats?.xp || 0;
     const estimatedXP = (totalInterviews * 100) + (totalQuestions * 10); // Rough estimate

@@ -3,20 +3,25 @@
 
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const { startSession, respondToAnswer, endSession } = require('../services/liveInterviewService.js');
 const { executeCode, runTestCases } = require('../services/codeExecutionService.js');
 const LiveInterviewSession = require('../models/LiveInterviewSession.js');
+const { liveInterviewRateLimiter } = require('../middleware/rateLimiter');
 
 /**
  * POST /api/live-interview/start
  * Start a new live interview session.
  */
-router.post('/start', async (req, res) => {
+router.post('/start', liveInterviewRateLimiter, async (req, res) => {
   try {
     const { userId, jobDescription, mode } = req.body;
 
-    if (!userId)          return res.status(400).json({ error: 'userId is required' });
-    if (!jobDescription)  return res.status(400).json({ error: 'jobDescription is required' });
+    if (!userId)          return res.status(400).json({ success: false, error: 'userId is required' });
+    if (!mongoose.Types.ObjectId.isValid(userId)) {
+      return res.status(400).json({ success: false, error: 'Invalid userId' });
+    }
+    if (!jobDescription)  return res.status(400).json({ success: false, error: 'jobDescription is required' });
     if (!['behavioral', 'technical', 'coding'].includes(mode)) {
       return res.status(400).json({ error: 'mode must be behavioral, technical, or coding' });
     }
@@ -27,7 +32,7 @@ router.post('/start', async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error starting live interview:', error);
-    res.status(500).json({ error: error.message || 'Failed to start interview' });
+    res.status(500).json({ success: false, error: error.message || 'Failed to start interview' });
   }
 });
 
@@ -35,7 +40,7 @@ router.post('/start', async (req, res) => {
  * POST /api/live-interview/respond
  * Submit an answer and get the AI's follow-up response.
  */
-router.post('/respond', async (req, res) => {
+router.post('/respond', liveInterviewRateLimiter, async (req, res) => {
   try {
     const { sessionId, answer, codeSubmission } = req.body;
 
@@ -61,7 +66,7 @@ router.post('/respond', async (req, res) => {
  * POST /api/live-interview/execute-code
  * Execute code using the Piston API.
  */
-router.post('/execute-code', async (req, res) => {
+router.post('/execute-code', liveInterviewRateLimiter, async (req, res) => {
   try {
     const { code, language, testCases } = req.body;
 
@@ -95,7 +100,7 @@ router.post('/execute-code', async (req, res) => {
  * POST /api/live-interview/end
  * End the session and generate a summary.
  */
-router.post('/end', async (req, res) => {
+router.post('/end', liveInterviewRateLimiter, async (req, res) => {
   try {
     const { sessionId } = req.body;
     if (!sessionId) return res.status(400).json({ error: 'sessionId is required' });

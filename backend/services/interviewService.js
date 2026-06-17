@@ -482,13 +482,6 @@ async function completeSession(sessionId, userId, questionTimings) {
       }
     }
     
-    // Strategy 4: Last resort - find any recent session
-    if (!session) {
-      console.log('Strategy 4 - Finding any recent session');
-      session = await InterviewSession.findOne({}).sort({ createdAt: -1 });
-      console.log('Strategy 4 result:', session ? `FOUND (${session.sessionId})` : 'NOT FOUND');
-    }
-    
     // If still not found, log debug info and throw error
     if (!session) {
       console.log('=== DEBUG INFO ===');
@@ -686,7 +679,6 @@ async function generateSessionInsights(session, metrics) {
 module.exports = {
   generateQuestions,
   analyzeAnswer,
-  transcribeAudio,
   completeSession,
   generateSessionInsights
 };

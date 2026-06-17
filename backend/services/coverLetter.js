@@ -1,7 +1,7 @@
 // services/coverLetter.js
 const { getLLMResponse } = require('./llm');
 
-async function generateCoverLetter({ jobTitle, companyName, skills, resumeText }) {
+async function generateCoverLetter({ jobTitle, companyName, skills, resumeText, userId = null }) {
   const prompt = `You are a professional HR assistant. Your task is to write a tailored and complete cover letter.
 The output must be only a ready-to-send email body nothing else,avoid adding first line as here is the tailor version or anything like that,strictly start with email only.
 It must start with "Dear Hiring Manager," and end with a professional closing.
@@ -19,7 +19,7 @@ Here is the candidate's resume. Use it to tailor the cover letter:
 ${resumeText}
 --- END RESUME ---`;
 
-  const letter = await getLLMResponse(prompt);
+  const letter = await getLLMResponse(prompt, userId);
   return letter;
 }
 

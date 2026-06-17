@@ -1,34 +1,74 @@
 'use client';
+
 import Link from 'next/link';
+import { signIn } from 'next-auth/react';
 import Header from '../components/header';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Mic, BarChart3, Briefcase, ArrowRight } from 'lucide-react';
+
+const features = [
+  {
+    icon: Mic,
+    title: 'AI Interview',
+    description: 'Practice with per-answer feedback, or simulate live behavioral, technical, and coding interviews.',
+    href: '/interview',
+  },
+  {
+    icon: BarChart3,
+    title: 'Aptitude Tests',
+    description: 'Timed quant, logical, and verbal practice with topic-wise breakdown.',
+    href: '/aptitude',
+  },
+  {
+    icon: Briefcase,
+    title: 'Job Search',
+    description: 'Discover internships, generate cover letters, and send applications via Gmail.',
+    href: '/dashboard',
+  },
+];
 
 export default function Home() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-gray-100 to-white">
+    <main className="min-h-screen bg-background text-foreground">
       <Header />
-      <section className="text-center py-20 px-4">
-        <h1 className="text-5xl font-extrabold text-gray-800 mb-6">🚀 AutoApplyAI</h1>
-        <p className="text-lg text-gray-600 mb-8 max-w-xl mx-auto">
-          Automatically apply to jobs using your resume, AI cover letters, and Gmail.Prepare for interviews with AI-generated questions and feedback.
-        </p>
-        <div className="space-x-4">
-          <Link href="/upload">
-            <button className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-xl transition">Upload</button>
-          </Link>
-          <Link href="/dashboard">
-            <button className="bg-green-600 hover:bg-green-700 text-white px-6 py-2 rounded-xl transition">Dashboard</button>
-          </Link>
-          <Link href="/interview">
-            <button className="bg-purple-600 hover:bg-purple-700 text-white px-6 py-2 rounded-xl transition">Interview</button>
-          </Link>
-          <Link href="/live-interview">
-            <button className="bg-pink-600 hover:bg-pink-700 text-white px-6 py-2 rounded-xl transition">🎙️ Live AI</button>
-          </Link>
-          <Link href="/aptitude">
-            <button className="bg-cyan-600 hover:bg-cyan-700 text-white px-6 py-2 rounded-xl transition">📊 Aptitude</button>
-          </Link>
+      <div className="max-w-5xl mx-auto px-4 py-16">
+        <div className="text-center mb-16">
+          <h1 className="text-3xl font-semibold tracking-tight text-foreground sm:text-4xl mb-4">
+            Prepare smarter. Interview better.
+          </h1>
+          <p className="text-sm text-muted-foreground max-w-xl mx-auto">
+            AI-powered mock interviews, aptitude tests, and job application tools for your next role.
+          </p>
+          <div className="mt-8 flex justify-center gap-3">
+            <Button asChild size="lg">
+              <Link href="/interview">Get started <ArrowRight className="w-4 h-4" /></Link>
+            </Button>
+            <Button variant="outline" size="lg" onClick={() => signIn('google')}>
+              Sign in with Google
+            </Button>
+          </div>
         </div>
-      </section>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          {features.map((f) => (
+            <Link key={f.href} href={f.href}>
+              <Card className="h-full hover:border-primary/30 transition-colors">
+                <CardHeader>
+                  <f.icon className="w-6 h-6 text-primary mb-2" />
+                  <CardTitle className="text-xl">{f.title}</CardTitle>
+                  <CardDescription>{f.description}</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <span className="text-sm text-primary inline-flex items-center gap-1">
+                    Open <ArrowRight className="w-3.5 h-3.5" />
+                  </span>
+                </CardContent>
+              </Card>
+            </Link>
+          ))}
+        </div>
+      </div>
     </main>
   );
 }

@@ -140,14 +140,10 @@ async function getUserStats(userId) {
   try {
     const [
       totalInterviews,
-      totalVideos,
       interviewSessions,
-      recentVideos
     ] = await Promise.all([
       InterviewSession.countDocuments({ userId }),
-      Video.countDocuments({ userId }),
       InterviewSession.find({ userId }).sort({ createdAt: -1 }).limit(50),
-      Video.find({ userId }).sort({ createdAt: -1 }).limit(20)
     ]);
 
     // Calculate total questions from interview sessions
@@ -163,40 +159,17 @@ async function getUserStats(userId) {
       ? Math.round(scoresWithValues.reduce((sum, session) => sum + session.overallScore, 0) / scoresWithValues.length)
       : 0;
 
-    // Calculate total video time
-    const totalVideoTime = recentVideos.reduce((sum, video) => {
-      return sum + (video.duration || 0);
-    }, 0);
-
-    // Calculate behavioral scores from recent videos
-    const videosWithAnalysis = recentVideos.filter(video => video.behavioralAnalysis);
-    const behavioralScores = {};
-    
-    if (videosWithAnalysis.length > 0) {
-      const avgSpeakingRate = videosWithAnalysis.reduce((sum, video) => 
-        sum + (video.behavioralAnalysis.speaking_rate || 0), 0) / videosWithAnalysis.length;
-      
-      const avgEyeContact = videosWithAnalysis.reduce((sum, video) => 
-        sum + (video.behavioralAnalysis.eye_contact_score || 0), 0) / videosWithAnalysis.length;
-      
-      const avgConfidence = videosWithAnalysis.reduce((sum, video) => 
-        sum + (video.behavioralAnalysis.confidence_score || 0), 0) / videosWithAnalysis.length;
-
-      behavioralScores.speakingRate = Math.round(avgSpeakingRate);
-      behavioralScores.eyeContact = Math.round(avgEyeContact);
-      behavioralScores.confidence = Math.round(avgConfidence);
-    }
-
-    // Calculate improvement rate (comparing first and last 5 sessions)
+    // Calculate improvement rate from session scores
     let improvementRate = 0;
-    if (scoresWithValues.length >= 10) {
-      const firstFive = scoresWithValues.slice(-5);
-      const lastFive = scoresWithValues.slice(0, 5);
-      const firstAvg = firstFive.reduce((sum, s) => sum + s.overallScore, 0) / 5;
-      const lastAvg = lastFive.reduce((sum, s) => sum + s.overallScore, 0) / 5;
-      improvementRate = Math.round(((lastAvg - firstAvg) / firstAvg) * 100);
+    if (scoresWithValues.length >= 2) {
+      const first = scoresWithValues[scoresWithValues.length - 1].overallScore;
+      const last = scoresWithValues[0].overallScore;
+      if (first > 0) {
+        improvementRate = Math.round(((last - first) / first) * 100);
+      }
     }
 
+    const experiencePoints = totalInterviews * 100 + totalQuestions * 10;
     // Get favorite topics
     const topicCounts = {};
     interviewSessions.forEach(session => {
@@ -210,11 +183,7 @@ async function getUserStats(userId) {
       .slice(0, 5)
       .map(([name, count]) => ({ name, count }));
 
-    // Calculate current streak
     const currentStreak = calculateCurrentStreak(interviewSessions);
-
-    // Calculate level and experience points
-    const experiencePoints = totalInterviews * 100 + totalQuestions * 10 + Math.floor(totalVideoTime / 60) * 5;
     const level = Math.floor(experiencePoints / 1000) + 1;
     const nextLevelPoints = level * 1000;
 
@@ -235,9 +204,7 @@ async function getUserStats(userId) {
       totalQuestions,
       averageScore,
       improvementRate,
-      totalVideoTime,
       favoriteTopics,
-      behavioralScores,
       currentStreak,
       level,
       experiencePoints,

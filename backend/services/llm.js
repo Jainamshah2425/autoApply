@@ -1,12 +1,64 @@
 const axios = require('axios');
+const { serviceRateLimiter } = require('../middleware/rateLimiter');
+
+// Circuit breaker state
+const circuitBreaker = {
+  failures: 0,
+  lastFailureTime: null,
+  STATE: { CLOSED: 'CLOSED', OPEN: 'OPEN', HALF_OPEN: 'HALF_OPEN' },
+  state: 'CLOSED',
+  FAILURE_THRESHOLD: 5,
+  RESET_TIMEOUT: 30000 // 30 seconds
+};
+
+function isCircuitOpen() {
+  if (circuitBreaker.state === circuitBreaker.STATE.OPEN) {
+    const now = Date.now();
+    if (now - circuitBreaker.lastFailureTime > circuitBreaker.RESET_TIMEOUT) {
+      circuitBreaker.state = circuitBreaker.STATE.HALF_OPEN;
+      console.log('Circuit breaker: OPEN -> HALF_OPEN');
+      return false;
+    }
+    return true;
+  }
+  return false;
+}
+
+function recordSuccess() {
+  if (circuitBreaker.state === circuitBreaker.STATE.HALF_OPEN) {
+    circuitBreaker.state = circuitBreaker.STATE.CLOSED;
+    circuitBreaker.failures = 0;
+    console.log('Circuit breaker: HALF_OPEN -> CLOSED');
+  }
+}
+
+function recordFailure() {
+  circuitBreaker.failures++;
+  circuitBreaker.lastFailureTime = Date.now();
+  if (circuitBreaker.failures >= circuitBreaker.FAILURE_THRESHOLD) {
+    circuitBreaker.state = circuitBreaker.STATE.OPEN;
+    console.log('Circuit breaker: CLOSED -> OPEN');
+  }
+}
 
 /**
  * Gets a response from the LLM based on a given prompt.
  * @param {string} prompt - The prompt to send to the LLM.
  * @returns {Promise<string>} - A promise that resolves to the LLM's response.
  */
-async function getLLMResponse(prompt) {
-  const systemPrompt = `You are a helpful AI assistant.`; // A generic system prompt
+async function getLLMResponse(prompt, userId = null, options = {}) {
+  if (isCircuitOpen()) {
+    throw new Error('Groq API circuit breaker open. Try again later.');
+  }
+
+  const key = userId || 'global';
+  const rateLimit = serviceRateLimiter.check(key);
+  
+  if (!rateLimit.allowed) {
+    throw new Error(`Rate limit exceeded. Try again in ${rateLimit.retryAfter}s`);
+  }
+
+  const systemPrompt = `You are a helpful AI assistant.`;
 
   try {
     console.log('=== LLM SERVICE CALL ===');
@@ -24,7 +76,7 @@ async function getLLMResponse(prompt) {
         messages: [
           { role: 'user', content: prompt },
         ],
-        max_tokens: 1500,
+        max_tokens: options.maxTokens || 1500,
       },
       {
         headers: {
@@ -42,9 +94,15 @@ async function getLLMResponse(prompt) {
       hasMessage: !!response.data.choices?.[0]?.message,
       messageLength: response.data.choices?.[0]?.message?.content?.length
     });
+    console.log('[COST] Tokens: prompt=' + (response.data.usage?.prompt_tokens || 0) + 
+                ', completion=' + (response.data.usage?.completion_tokens || 0) + 
+                ', total=' + (response.data.usage?.total_tokens || 0));
+
+    recordSuccess();
 
   return response.data.choices[0].message.content;
   } catch (error) {
+    recordFailure();
     console.error('=== LLM API ERROR ===');
     console.error('Error type:', error.constructor.name);
     console.error('Error message:', error.message);
@@ -74,7 +132,7 @@ async function getLLMResponse(prompt) {
  * @param {string} params.resumeText - The user's resume text.
  * @returns {Promise<string>} - A promise that resolves to the improved answer.
  */
-async function generateImprovedAnswer({ question, userAnswer, jobDescription = '', resumeText = '' }) {
+async function generateImprovedAnswer({ question, userAnswer, jobDescription = '', resumeText = '', userId = null }) {
   // Create a prompt that gives context and instructions for improving the answer
   const prompt = `
 You are an expert interview coach with years of experience helping people land jobs at top companies.
@@ -104,7 +162,7 @@ FORMAT:
 `;
 
   try {
-    const improvedAnswer = await getLLMResponse(prompt);
+    const improvedAnswer = await getLLMResponse(prompt, userId);
     return improvedAnswer;
   } catch (error) {
     console.error('Error generating improved answer:', error);

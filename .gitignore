@@ -42,6 +42,10 @@ frontend/node_modules/
 # Build output & cache
 frontend/.next/
 frontend/out/
+antigravity_template/
+Agents.md
+features_implementation_plan.md
+cron_implementation_plan.md
 
 # =============================================================================
 # BACKEND (Node.js & FastAPI)
@@ -50,7 +54,7 @@ frontend/out/
 # Dependency directories
 backend/node_modules/
 backend/events/
-backend/utils/
+# backend/utils/ committed for seedUserData
 # Python virtual environment
 backend/fastapi_service/tr/
 frontend/app/interview/history/*
@@ -124,3 +128,4 @@ app.log
 credentials.json
 token.json
 *.pyc
+.dual-graph/

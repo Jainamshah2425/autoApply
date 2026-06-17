@@ -59,6 +59,14 @@ const interviewSessionSchema = new mongoose.Schema({
     enum: ['active', 'completed', 'abandoned'],
     default: 'active'
   },
+  insights: {
+    type: mongoose.Schema.Types.Mixed,
+    default: null
+  },
+  completedAt: {
+    type: Date,
+    default: null
+  },
   createdAt: {
     type: Date,
     default: Date.now

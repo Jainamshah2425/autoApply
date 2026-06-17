@@ -1,27 +1,39 @@
 'use client';
 import { useState } from 'react';
 import { useSession, signIn, signOut } from 'next-auth/react';
-import axios from 'axios';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ErrorMessage } from '@/components/ui/error-message';
+import PageLayout from '@/components/layout/page-layout';
+import { api } from '@/lib/api';
 
 export default function TestOAuthPage() {
   const { data: session } = useSession();
   const [testResults, setTestResults] = useState({});
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+
+  if (process.env.NODE_ENV === 'production') {
+    return (
+      <div className="min-h-screen bg-background">
+        <PageLayout title="Not Found" description="This page is only available in development." />
+      </div>
+    );
+  }
 
   const testBackendConnection = async () => {
     setLoading(true);
+    setError(null);
     try {
-      const response = await axios.get(`${API_URL}/`);
+      const response = await api.get('/');
       setTestResults(prev => ({
         ...prev,
         backendConnection: { success: true, data: response.data }
       }));
-    } catch (error) {
+    } catch (err) {
       setTestResults(prev => ({
         ...prev,
-        backendConnection: { success: false, error: error.message }
+        backendConnection: { success: false, error: err.message }
       }));
     }
     setLoading(false);
@@ -29,26 +41,24 @@ export default function TestOAuthPage() {
 
   const testGmailStatus = async () => {
     if (!session?.user?.email) {
-      alert('Please sign in first');
+      setError('Please sign in first');
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
-      // First get user ID
-      const userResponse = await axios.get(`${API_URL}/api/user/by-email/${session.user.email}`);
+      const userResponse = await api.get(`/api/user/by-email/${session.user.email}`);
       const userId = userResponse.data._id;
-
-      // Then check Gmail status
-      const gmailResponse = await axios.get(`${API_URL}/api/email/gmail-status/${userId}`);
+      const gmailResponse = await api.get(`/api/email/gmail-status/${userId}`);
       setTestResults(prev => ({
         ...prev,
         gmailStatus: { success: true, data: gmailResponse.data }
       }));
-    } catch (error) {
+    } catch (err) {
       setTestResults(prev => ({
         ...prev,
-        gmailStatus: { success: false, error: error.response?.data || error.message }
+        gmailStatus: { success: false, error: err.response?.data || err.message }
       }));
     }
     setLoading(false);
@@ -56,102 +66,90 @@ export default function TestOAuthPage() {
 
   const testEmailSend = async () => {
     if (!session?.user?.email) {
-      alert('Please sign in first');
+      setError('Please sign in first');
       return;
     }
 
     setLoading(true);
+    setError(null);
     try {
-      const userResponse = await axios.get(`${API_URL}/api/user/by-email/${session.user.email}`);
+      const userResponse = await api.get(`/api/user/by-email/${session.user.email}`);
       const userId = userResponse.data._id;
-
-      const emailResponse = await axios.post(`${API_URL}/api/email/send`, {
+      const emailResponse = await api.post('/api/email/send', {
         userId,
         to: session.user.email,
         subject: 'Test Email',
         message: 'This is a test email from your interview app.'
       });
-
       setTestResults(prev => ({
         ...prev,
         emailSend: { success: true, data: emailResponse.data }
       }));
-    } catch (error) {
+    } catch (err) {
       setTestResults(prev => ({
         ...prev,
-        emailSend: { success: false, error: error.response?.data || error.message }
+        emailSend: { success: false, error: err.response?.data || err.message }
       }));
     }
     setLoading(false);
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8">
-      <div className="max-w-4xl mx-auto">
-        <h1 className="text-3xl font-bold mb-8">OAuth Debug Panel</h1>
-        
-        {/* Authentication Status */}
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <h2 className="text-xl font-semibold mb-4">Authentication Status</h2>
-          {session ? (
-            <div>
-              <p className="text-green-600">✅ Signed in as: {session.user.email}</p>
-              <button
-                onClick={() => signOut()}
-                className="mt-2 px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600"
-              >
-                Sign Out
-              </button>
-            </div>
-          ) : (
-            <div>
-              <p className="text-red-600">❌ Not signed in</p>
-              <button
-                onClick={() => signIn('google')}
-                className="mt-2 px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600"
-              >
-                Sign In with Google
-              </button>
-            </div>
-          )}
-        </div>
+    <div className="min-h-screen bg-background">
+      <PageLayout title="OAuth Debug Panel" description="Development-only diagnostics for auth and email.">
+        {error && <div className="mb-6"><ErrorMessage title="Error" message={error} /></div>}
 
-        {/* Test Buttons */}
-        <div className="bg-white p-6 rounded-lg shadow mb-6">
-          <h2 className="text-xl font-semibold mb-4">Tests</h2>
-          <div className="space-y-3">
-            <button
-              onClick={testBackendConnection}
-              disabled={loading}
-              className="w-full px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 disabled:opacity-50"
-            >
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Authentication Status</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {session ? (
+              <div>
+                <p className="text-green-600 dark:text-green-400">Signed in as: {session.user.email}</p>
+                <Button variant="destructive" onClick={() => signOut()} className="mt-2">
+                  Sign Out
+                </Button>
+              </div>
+            ) : (
+              <div>
+                <p className="text-destructive">Not signed in</p>
+                <Button variant="default" onClick={() => signIn('google')} className="mt-2">
+                  Sign In with Google
+                </Button>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>Tests</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Button variant="default" onClick={testBackendConnection} disabled={loading} className="w-full">
               Test Backend Connection
-            </button>
-            <button
-              onClick={testGmailStatus}
-              disabled={loading || !session}
-              className="w-full px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="secondary" onClick={testGmailStatus} disabled={loading || !session} className="w-full">
               Check Gmail Status
-            </button>
-            <button
-              onClick={testEmailSend}
-              disabled={loading || !session}
-              className="w-full px-4 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50"
-            >
+            </Button>
+            <Button variant="outline" onClick={testEmailSend} disabled={loading || !session} className="w-full">
               Test Email Send
-            </button>
-          </div>
-        </div>
+            </Button>
+          </CardContent>
+        </Card>
 
-        {/* Test Results */}
-        <div className="bg-white p-6 rounded-lg shadow">
-          <h2 className="text-xl font-semibold mb-4">Test Results</h2>
-          <pre className="bg-gray-100 p-4 rounded text-sm overflow-auto">
-            {JSON.stringify(testResults, null, 2)}
-          </pre>
-        </div>
-      </div>
+        <Card>
+          <CardHeader>
+            <CardTitle>Test Results</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <pre className="bg-muted p-4 rounded-md text-sm overflow-auto">
+              {JSON.stringify(testResults, null, 2)}
+            </pre>
+          </CardContent>
+        </Card>
+      </PageLayout>
     </div>
   );
 }

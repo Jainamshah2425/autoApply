@@ -10,24 +10,28 @@ const fs = require('fs');
 const path = require('path');
 const mongoose = require(path.join(__dirname, '..', 'backend', 'node_modules', 'mongoose'));
 
-// Manually load .env (to avoid needing dotenv in execution/)
-const envFiles = [
-  path.join(__dirname, '..', '.env'),
-  path.join(__dirname, '..', 'backend', '.env')
-];
-for (const ef of envFiles) {
-  if (fs.existsSync(ef)) {
-    fs.readFileSync(ef, 'utf8').split('\n').forEach(line => {
-      const trimmed = line.trim();
-      if (!trimmed || trimmed.startsWith('#')) return;
-      const eqIdx = trimmed.indexOf('=');
-      if (eqIdx === -1) return;
-      const key = trimmed.substring(0, eqIdx).trim();
-      const val = trimmed.substring(eqIdx + 1).trim();
-      if (key && val) process.env[key] = val;
-    });
+// Manually load .env only if MONGODB_URI is not already set (e.g. from parent script)
+if (!process.env.MONGODB_URI) {
+  const envFiles = [
+    path.join(__dirname, '..', '.env'),
+    path.join(__dirname, '..', 'backend', '.env')
+  ];
+  for (const ef of envFiles) {
+    if (fs.existsSync(ef)) {
+      fs.readFileSync(ef, 'utf8').split('\n').forEach(line => {
+        const trimmed = line.trim();
+        if (!trimmed || trimmed.startsWith('#')) return;
+        const eqIdx = trimmed.indexOf('=');
+        if (eqIdx === -1) return;
+        const key = trimmed.substring(0, eqIdx).trim();
+        const val = trimmed.substring(eqIdx + 1).trim();
+        if (key && val) process.env[key] = val;
+      });
+    }
   }
 }
+
+require('dns').setServers(['8.8.8.8', '1.1.1.1']);
 
 // Import the model
 const AptitudeQuestion = require(path.join(__dirname, '..', 'backend', 'models', 'AptitudeQuestion.js'));

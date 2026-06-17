@@ -19,11 +19,16 @@ ${resume || 'Not provided'}
 
 RULES:
 - Ask ONE question at a time
-- Start with an introduction, then move through behavioral questions
+- TURN-TAKING (CRITICAL): This is a LIVE interview. Wait for the candidate to answer before asking the next question.
+- NEVER invent, assume, or simulate the candidate's answers
+- NEVER output multiple interviewer turns in one response
+- Each turn: briefly acknowledge their previous answer (if any), then ask at most ONE new question
+- Start with a brief greeting and ONE opening question only
 - Use the STAR method to probe answers — ask follow-ups if the candidate's answer lacks Situation, Task, Action, or Result
 - After 2-3 behavioral questions, shift to situational/hypothetical questions
 - Be encouraging but honest. If an answer is weak, gently push for more detail
 - After 8-10 total exchanges, wrap up naturally and thank the candidate
+- Set shouldContinue to false ONLY for final closing remarks (no more questions)
 - Keep your responses concise (2-3 sentences max for follow-ups)
 - ALWAYS respond with a JSON object in this format:
 {
@@ -44,11 +49,14 @@ ${resume || 'Not provided'}
 
 RULES:
 - Ask ONE question at a time
+- TURN-TAKING (CRITICAL): Wait for the candidate to answer before your next question. Never invent their answers.
+- Each turn: acknowledge their previous answer briefly, then ask at most ONE follow-up or new question
 - Start with conceptual questions, then move to problem-solving
 - Cover: system design basics, data structures, algorithms, and domain-specific topics from the JD
 - Ask follow-up questions to probe depth — e.g., "What's the time complexity?", "How would you optimize this?"
 - If the candidate struggles, provide hints rather than answers
 - After 8-10 total exchanges, wrap up naturally
+- Set shouldContinue to false ONLY for final closing remarks
 - Keep responses concise
 - ALWAYS respond with a JSON object:
 {
@@ -69,11 +77,12 @@ ${resume || 'Not provided'}
 
 RULES:
 - Present ONE coding problem at a time
-- Start with a clear problem statement including examples and constraints
-- After presenting the problem, wait for the candidate to code a solution
+- TURN-TAKING (CRITICAL): Wait for the candidate to respond or submit code before continuing. Never invent their answers.
+- After presenting a problem, STOP and wait — do not ask the next problem until they respond
 - When reviewing their code, evaluate: correctness, edge cases, time/space complexity, code quality
 - Ask follow-up questions: "Can you optimize this?", "What about edge case X?"
 - Present 2-3 coding problems total, increasing in difficulty
+- Set shouldContinue to false ONLY for final closing remarks
 - Keep responses concise
 - ALWAYS respond with a JSON object:
 {
@@ -87,10 +96,68 @@ RULES:
     "description": "Full problem description",
     "examples": [{"input": "...", "output": "..."}],
     "constraints": ["constraint1"],
+    "functionSignature": "def solve(nums: List[int]) -> int:",
+    "starterCode": {
+      "python": "from typing import List\\n\\n# TODO: implement the function below\\ndef solve(nums: List[int]) -> int:\\n    pass\\n",
+      "javascript": "// TODO: implement the function below\\nfunction solve(nums) {\\n  // nums: number[]\\n}\\n",
+      "java": "import java.util.*;\\n\\nclass Solution {\\n    // TODO: implement the method below\\n    public int solve(int[] nums) {\\n        return 0;\\n    }\\n}\\n",
+      "cpp": "#include <bits/stdc++.h>\\nusing namespace std;\\n\\n// TODO: implement the function below\\nint solve(vector<int>& nums) {\\n    return 0;\\n}\\n"
+    },
     "testCases": [{"input": "...", "expectedOutput": "..."}]
   }
 }`
 };
+
+function formatMessageForLLM(entry) {
+  if (entry.role === 'assistant') {
+    try {
+      const parsed = JSON.parse(entry.content);
+      if (parsed?.message) {
+        return { role: 'assistant', content: parsed.message };
+      }
+    } catch {
+      // already plain text
+    }
+  }
+  return { role: entry.role, content: entry.content };
+}
+
+function normalizeAiResponse(parsed, { questionCount = 1, hasUserAnswer = false } = {}) {
+  const message =
+    (typeof parsed.message === 'string' && parsed.message.trim()) ||
+    (typeof parsed.content === 'string' && parsed.content.trim()) ||
+    '';
+
+  if (!message) {
+    throw new Error('AI returned an empty message');
+  }
+
+  const questionType = parsed.questionType || 'follow-up';
+  const isClosing =
+    questionType === 'closing' ||
+    /\b(thank you for your time|that concludes our interview|this concludes|we're done|interview is complete)\b/i.test(message);
+
+  return {
+    message,
+    questionType,
+    isFollowUp: Boolean(parsed.isFollowUp) || (hasUserAnswer && questionType === 'follow-up'),
+    shouldContinue: isClosing ? false : parsed.shouldContinue !== false,
+    questionNumber: parsed.questionNumber || questionCount,
+    codingProblem: parsed.codingProblem || null,
+  };
+}
+
+function parseAiContent(content) {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      return JSON.parse(jsonMatch[0]);
+    }
+    return { message: content };
+  }
+}
 
 // ─── Start Session ────────────────────────────────────────────────
 async function startSession(userId, jobDescription, mode) {
@@ -106,16 +173,18 @@ async function startSession(userId, jobDescription, mode) {
   const sessionId = uuidv4();
   const systemPrompt = SYSTEM_PROMPTS[mode](jobDescription, resumeText);
 
-  // Build initial conversation
+  // Build initial conversation — user kickoff ensures the model waits for real answers
   const conversationHistory = [
-    { role: 'system', content: systemPrompt }
+    { role: 'system', content: systemPrompt },
+    { role: 'user', content: 'Hello, I am ready to begin the interview.' },
   ];
 
-  // Get the first question from the AI
-  const firstResponse = await callLLMWithHistory(conversationHistory);
+  const firstResponse = await callLLMWithHistory(conversationHistory, {
+    questionCount: 1,
+    hasUserAnswer: false,
+  });
 
-  // Add assistant response to history
-  conversationHistory.push({ role: 'assistant', content: JSON.stringify(firstResponse) });
+  conversationHistory.push({ role: 'assistant', content: firstResponse.message });
 
   // Persist session
   const session = new LiveInterviewSession({
@@ -156,14 +225,14 @@ async function respondToAnswer(sessionId, userAnswer, codeSubmission = null) {
     userMessage += `\n\n[CODE SUBMISSION]\nLanguage: ${codeSubmission.language}\n\`\`\`\n${codeSubmission.code}\n\`\`\`\nExecution Output:\n${codeSubmission.executionOutput || 'Not executed yet'}\nTest Results: ${codeSubmission.testResults ? JSON.stringify(codeSubmission.testResults) : 'N/A'}`;
   }
 
-  // Add user answer to conversation
   session.conversationHistory.push({ role: 'user', content: userMessage });
 
-  // Get AI response with full conversation context
-  const aiResponse = await callLLMWithHistory(session.conversationHistory);
+  const aiResponse = await callLLMWithHistory(session.conversationHistory, {
+    questionCount: session.questions.length + 1,
+    hasUserAnswer: true,
+  });
 
-  // Add AI response to conversation
-  session.conversationHistory.push({ role: 'assistant', content: JSON.stringify(aiResponse) });
+  session.conversationHistory.push({ role: 'assistant', content: aiResponse.message });
 
   // Update the last question with user's answer
   const lastQuestion = session.questions[session.questions.length - 1];
@@ -174,8 +243,8 @@ async function respondToAnswer(sessionId, userAnswer, codeSubmission = null) {
     }
   }
 
-  // If AI is continuing, add the new question
-  if (aiResponse.shouldContinue) {
+  // If AI is continuing with a new question, track it
+  if (aiResponse.shouldContinue && aiResponse.questionType !== 'closing') {
     session.questions.push({
       questionText: aiResponse.message,
       questionType: aiResponse.questionType || 'follow-up',
@@ -285,11 +354,13 @@ Return ONLY the JSON.`;
 }
 
 // ─── Helper: Call LLM with conversation history ──────────────────
-async function callLLMWithHistory(conversationHistory) {
-  const messages = conversationHistory.map(m => ({
-    role: m.role,
-    content: m.content
-  }));
+async function callLLMWithHistory(conversationHistory, context = {}) {
+  const messages = conversationHistory.map(formatMessageForLLM);
+
+  const last = messages[messages.length - 1];
+  if (last?.role !== 'user') {
+    throw new Error('Invalid conversation state: expected user message before AI reply');
+  }
 
   try {
     const axios = require('axios');
@@ -298,8 +369,9 @@ async function callLLMWithHistory(conversationHistory) {
       {
         model: 'llama-3.3-70b-versatile',
         messages,
-        max_tokens: 1500,
-        temperature: 0.7,
+        max_tokens: 2000,
+        temperature: 0.5,
+        response_format: { type: 'json_object' },
       },
       {
         headers: {
@@ -311,25 +383,8 @@ async function callLLMWithHistory(conversationHistory) {
     );
 
     const content = response.data.choices[0].message.content;
-
-    // Try to parse as JSON
-    try {
-      return JSON.parse(content);
-    } catch {
-      // If not valid JSON, try to extract JSON from the response
-      const jsonMatch = content.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
-      }
-      // Fallback: wrap plain text in expected format
-      return {
-        message: content,
-        questionType: 'follow-up',
-        isFollowUp: false,
-        shouldContinue: true,
-        questionNumber: 1
-      };
-    }
+    const parsed = parseAiContent(content);
+    return normalizeAiResponse(parsed, context);
   } catch (error) {
     console.error('LLM call failed:', error.message);
     throw new Error(`Interview AI failed: ${error.message}`);

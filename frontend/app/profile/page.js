@@ -2,21 +2,22 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
-import axios from 'axios';
 import Header from '../../components/header';
 import ContributionHeatmap from '../../components/ContributionHeatmap';
 import ProfileStats from '../../components/ProfileStats';
 import ProfileSettings from '../../components/ProfileSettings';
+import { Button } from "@/components/ui/button";
+import { ErrorMessage } from '@/components/ui/error-message';
+import { BarChart3, Flame, Trophy, Settings, Loader2, Construction } from 'lucide-react';
 
-// Use environment variable for API URL
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
+import { api } from '@/lib/api';
 
 // Define navigation tabs outside component to prevent re-creation on each render
 const navigationTabs = [
-  { id: 'overview', name: 'Overview', icon: '📊' },
-  { id: 'contributions', name: 'Activity', icon: '🔥' },
-  { id: 'achievements', name: 'Achievements', icon: '🏆' },
-  { id: 'settings', name: 'Settings', icon: '⚙️' }
+  { id: 'overview', name: 'Overview', icon: BarChart3 },
+  { id: 'contributions', name: 'Activity', icon: Flame },
+  { id: 'achievements', name: 'Achievements', icon: Trophy },
+  { id: 'settings', name: 'Settings', icon: Settings }
 ];
 
 // Define date formatting options to prevent re-creation on each render
@@ -54,15 +55,7 @@ export default function ProfilePage() {
       setError(null); // Clear any previous errors
       console.log('Loading user profile for:', session.user.email);
       
-      const response = await axios.get(
-        `${API_URL}/api/user/by-email/${session.user.email}`,
-        {
-          timeout: 10000, // 10 second timeout
-          headers: {
-            'Content-Type': 'application/json'
-          }
-        }
-      );
+      const response = await api.get(`/api/user/by-email/${session.user.email}`);
       
       console.log('User profile loaded successfully:', response.data);
       setUserProfile(response.data);
@@ -79,6 +72,8 @@ export default function ProfilePage() {
       }
       
       setError(errorMessage);
+    } finally {
+      setLoading(false);
     }
   }, [session?.user?.email]);
 
@@ -102,8 +97,8 @@ export default function ProfilePage() {
           break;
       }
 
-      const response = await axios.get(
-        `${API_URL}/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
+      const response = await api.get(
+        `/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
       );
       setContributionData(response.data);
     } catch (err) {
@@ -116,9 +111,7 @@ export default function ProfilePage() {
     try {
       if (!userProfile?._id) return;
       
-      const response = await axios.get(
-        `${API_URL}/api/user/stats/${userProfile._id}`
-      );
+      const response = await api.get(`/api/user/stats/${userProfile._id}`);
       setProfileStats(response.data);
     } catch (err) {
       console.error('Failed to load profile stats:', err);
@@ -233,10 +226,7 @@ export default function ProfilePage() {
   const updateProfile = async (updatedData) => {
     try {
       setLoading(true);
-      await axios.put(
-        `${API_URL}/api/user/profile/${userProfile._id}`,
-        updatedData
-      );
+      await api.put(`/api/user/profile/${userProfile._id}`, updatedData);
       setUserProfile({ ...userProfile, ...updatedData });
     } catch (err) {
       console.error('Failed to update profile:', err);
@@ -248,10 +238,7 @@ export default function ProfilePage() {
 
   const updatePrivacySettings = async (settings) => {
     try {
-      await axios.put(
-        `${API_URL}/api/user/privacy/${userProfile._id}`,
-        settings
-      );
+      await api.put(`/api/user/privacy/${userProfile._id}`, settings);
       setPrivacySettings(settings);
     } catch (err) {
       console.error('Failed to update privacy settings:', err);
@@ -262,23 +249,23 @@ export default function ProfilePage() {
   // While auth status is loading, avoid flicker
   if (status === 'loading') {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="animate-pulse">
-            <div className="bg-white rounded-lg shadow-md p-8">
+            <div className="bg-card rounded-xl border border-border p-8">
               <div className="flex items-center space-x-6">
-                <div className="w-32 h-32 bg-gray-300 rounded-full"></div>
+                <div className="w-32 h-32 bg-muted rounded-full"></div>
                 <div className="flex-1">
-                  <div className="h-8 bg-gray-300 rounded w-1/3 mb-4"></div>
-                  <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
-                  <div className="h-4 bg-gray-300 rounded w-2/3"></div>
+                  <div className="h-8 bg-muted rounded w-1/3 mb-4"></div>
+                  <div className="h-4 bg-muted rounded w-1/2 mb-2"></div>
+                  <div className="h-4 bg-muted rounded w-2/3"></div>
                 </div>
               </div>
             </div>
-            <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-              <div className="h-6 bg-gray-300 rounded w-1/4 mb-4"></div>
-              <div className="h-48 bg-gray-300 rounded"></div>
+            <div className="mt-8 bg-card rounded-xl border border-border p-6">
+              <div className="h-6 bg-muted rounded w-1/4 mb-4"></div>
+              <div className="h-48 bg-muted rounded"></div>
             </div>
           </div>
         </div>
@@ -288,23 +275,23 @@ export default function ProfilePage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="animate-pulse">
-            <div className="bg-white rounded-lg shadow-md p-8">
+            <div className="bg-card rounded-xl border border-border p-8">
               <div className="flex items-center space-x-6">
-                <div className="w-32 h-32 bg-gray-300 rounded-full"></div>
+                <div className="w-32 h-32 bg-muted rounded-full"></div>
                 <div className="flex-1">
-                  <div className="h-8 bg-gray-300 rounded w-1/3 mb-4"></div>
-                  <div className="h-4 bg-gray-300 rounded w-1/2 mb-2"></div>
-                  <div className="h-4 bg-gray-300 rounded w-2/3"></div>
+                  <div className="h-8 bg-muted rounded w-1/3 mb-4"></div>
+                  <div className="h-4 bg-muted rounded w-1/2 mb-2"></div>
+                  <div className="h-4 bg-muted rounded w-2/3"></div>
                 </div>
               </div>
             </div>
-            <div className="mt-8 bg-white rounded-lg shadow-md p-6">
-              <div className="h-6 bg-gray-300 rounded w-1/4 mb-4"></div>
-              <div className="h-48 bg-gray-300 rounded"></div>
+            <div className="mt-8 bg-card rounded-xl border border-border p-6">
+              <div className="h-6 bg-muted rounded w-1/4 mb-4"></div>
+              <div className="h-48 bg-muted rounded"></div>
             </div>
           </div>
         </div>
@@ -314,13 +301,13 @@ export default function ProfilePage() {
 
   if (!session) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="max-w-4xl mx-auto px-4 py-16 text-center">
-          <h1 className="text-2xl font-bold text-gray-900 mb-4">
+          <h1 className="text-2xl font-bold text-foreground mb-4">
             Please sign in to view your profile
           </h1>
-          <p className="text-gray-600">
+          <p className="text-muted-foreground">
             You need to be logged in to access your profile page.
           </p>
         </div>
@@ -331,11 +318,11 @@ export default function ProfilePage() {
   // Show loading state until component is mounted
   if (!mounted) {
     return (
-      <div className="min-h-screen bg-gray-50">
+      <div className="min-h-screen bg-background">
         <Header />
         <div className="max-w-6xl mx-auto px-4 py-8">
           <div className="flex justify-center items-center h-64">
-            <div className="text-gray-600">Loading...</div>
+            <div className="text-muted-foreground">Loading...</div>
           </div>
         </div>
       </div>
@@ -343,20 +330,18 @@ export default function ProfilePage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50">
+    <div className="min-h-screen bg-background text-foreground">
       <Header />
       
       {error && (
-        <div className="max-w-6xl mx-auto px-4 pt-4">
-          <div className="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded mb-4">
-            {error}
-          </div>
+        <div className="max-w-6xl mx-auto px-4 pt-4 mb-4">
+          <ErrorMessage title="Error" message={error} />
         </div>
       )}
 
       <div className="max-w-6xl mx-auto px-4 py-8">
         {/* Profile Header */}
-        <div className="bg-white rounded-lg shadow-md p-8 mb-8">
+        <div className="bg-card rounded-xl border border-border p-8 mb-8">
           <div className="flex flex-col lg:flex-row items-start lg:items-center space-y-6 lg:space-y-0 lg:space-x-8">
             {/* Profile Picture */}
             <div className="relative">
@@ -378,44 +363,44 @@ export default function ProfilePage() {
             <div className="flex-1">
               <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <h1 className="text-3xl font-bold text-gray-900 mb-2">
+                  <h1 className="text-3xl font-bold text-foreground mb-2">
                     {userProfile?.fullName || session?.user?.name || 'User'}
                   </h1>
-                  <p className="text-lg text-gray-600 mb-2">
+                  <p className="text-lg text-muted-foreground mb-2">
                     @{userProfile?.username || userProfile?.email?.split('@')[0]}
                   </p>
                   {privacySettings.showEmail && (
-                    <p className="text-gray-500">
+                    <p className="text-muted-foreground">
                       {userProfile?.email || session?.user?.email}
                     </p>
                   )}
                 </div>
                 
                 <div className="flex space-x-3 mt-4 sm:mt-0">
-                  <button
+                  <Button
+                    variant="default"
                     onClick={() => setActiveTab('settings')}
-                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                   >
                     Edit Profile
-                  </button>
-                  <button
+                  </Button>
+                  <Button
+                    variant="secondary"
                     onClick={() => setActiveTab('privacy')}
-                    className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
                   >
                     Privacy
-                  </button>
+                  </Button>
                 </div>
               </div>
 
               {/* Bio */}
               {userProfile?.bio && (
-                <p className="text-gray-700 mt-4 max-w-2xl">
+                <p className="text-muted-foreground mt-4 max-w-2xl">
                   {userProfile.bio}
                 </p>
               )}
 
               {/* Location & Links */}
-              <div className="flex flex-wrap items-center gap-6 mt-4 text-sm text-gray-600">
+              <div className="flex flex-wrap items-center gap-6 mt-4 text-sm text-muted-foreground">
                 {privacySettings.showLocation && userProfile?.location && (
                   <div className="flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
@@ -430,7 +415,7 @@ export default function ProfilePage() {
                     href={userProfile.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center hover:text-blue-600"
+                    className="flex items-center hover:text-primary"
                   >
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path d="M11 3a1 1 0 100 2h2.586l-6.293 6.293a1 1 0 101.414 1.414L15 6.414V9a1 1 0 102 0V4a1 1 0 00-1-1h-5z" />
@@ -440,7 +425,7 @@ export default function ProfilePage() {
                   </a>
                 )}
 
-                <div className="text-gray-500">
+                <div className="text-muted-foreground">
                   Joined {new Date(userProfile?.createdAt || Date.now()).toLocaleDateString('en-US', dateFormatOptions)}
                 </div>
               </div>
@@ -448,8 +433,8 @@ export default function ProfilePage() {
               {/* Professional Background */}
               {userProfile?.professionalBackground && (
                 <div className="mt-4">
-                  <h3 className="text-sm font-semibold text-gray-700 mb-2">Professional Background</h3>
-                  <p className="text-gray-600">{userProfile.professionalBackground}</p>
+                  <h3 className="text-sm font-semibold text-foreground mb-2">Professional Background</h3>
+                  <p className="text-muted-foreground">{userProfile.professionalBackground}</p>
                 </div>
               )}
             </div>
@@ -457,23 +442,26 @@ export default function ProfilePage() {
         </div>
 
         {/* Navigation Tabs */}
-        <div className="bg-white rounded-lg shadow-md mb-8">
-          <div className="border-b border-gray-200">
+        <div className="bg-card rounded-xl border border-border mb-8">
+          <div className="border-b border-border">
             <nav className="-mb-px flex">
-              {navigationTabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <span className="mr-2">{tab.icon}</span>
-                  {tab.name}
-                </button>
-              ))}
+              {navigationTabs.map((tab) => {
+                const Icon = tab.icon;
+                return (
+                  <button
+                    key={tab.id}
+                    onClick={() => setActiveTab(tab.id)}
+                    className={`flex items-center px-6 py-4 text-sm font-medium border-b-2 transition-colors ${
+                      activeTab === tab.id
+                        ? 'border-primary text-primary'
+                        : 'border-transparent text-muted-foreground hover:text-foreground'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 mr-2" />
+                    {tab.name}
+                  </button>
+                );
+              })}
             </nav>
           </div>
         </div>
@@ -487,13 +475,13 @@ export default function ProfilePage() {
               )}
               
               {privacySettings.showContributions && (
-                <div className="bg-white rounded-lg shadow-md p-6">
+                <div className="bg-card rounded-xl border border-border p-6">
                   <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-gray-900">Activity Overview</h2>
+                    <h2 className="text-xl font-bold text-foreground">Activity Overview</h2>
                     <select
                       value={timeRange}
                       onChange={(e) => setTimeRange(e.target.value)}
-                      className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-colors"
                     >
                       <option value="3months">Last 3 months</option>
                       <option value="6months">Last 6 months</option>
@@ -518,12 +506,12 @@ export default function ProfilePage() {
           )}
 
           {activeTab === 'achievements' && (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Achievements</h2>
+            <div className="bg-card rounded-xl border border-border p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6">Achievements</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                {/* Achievement items will be populated based on user stats */}
-                <div className="text-center text-gray-500">
-                  🚧 Achievements system coming soon!
+                <div className="text-center text-muted-foreground flex flex-col items-center gap-2 py-8">
+                  <Construction className="w-6 h-6" />
+                  <span>Achievements system coming soon</span>
                 </div>
               </div>
             </div>
@@ -537,22 +525,22 @@ export default function ProfilePage() {
           )}
 
           {activeTab === 'privacy' && (
-            <div className="bg-white rounded-lg shadow-md p-6">
-              <h2 className="text-xl font-bold text-gray-900 mb-6">Privacy Settings</h2>
+            <div className="bg-card rounded-xl border border-border p-6">
+              <h2 className="text-xl font-bold text-foreground mb-6">Privacy Settings</h2>
               <div className="space-y-4">
                 {Object.entries(privacySettings).map(([key, value]) => (
                   <div key={key} className="flex items-center justify-between">
-                    <label className="text-gray-700 capitalize">
+                    <label className="text-foreground capitalize">
                       {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
                     </label>
                     <button
                       onClick={() => togglePrivacySetting(key)}
                       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        value ? 'bg-blue-600' : 'bg-gray-200'
+                        value ? 'bg-primary' : 'bg-muted'
                       }`}
                     >
                       <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                        className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
                           value ? 'translate-x-6' : 'translate-x-1'
                         }`}
                       />
@@ -560,12 +548,13 @@ export default function ProfilePage() {
                   </div>
                 ))}
               </div>
-              <button
+              <Button
+                variant="default"
                 onClick={() => updatePrivacySettings(privacySettings)}
-                className="mt-6 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                className="mt-6"
               >
                 Save Privacy Settings
-              </button>
+              </Button>
             </div>
           )}
         </div>

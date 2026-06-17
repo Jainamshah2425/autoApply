@@ -67,6 +67,13 @@ async function scrapeInternshalaJobs(url) {
     const selectors = [
       {
         container: '.individual_internship',
+        title: 'a.job-title-href, h2.job-internship-name a, #job_title',
+        company: 'p.company-name, .company-name, .heading_6.company_name .company-name',
+        url: 'a.job-title-href, a#job_title, a[href*="/internship/detail/"]',
+        location: '.location_link, .internship_location, .row-1-item.locations span, .locations .location'
+      },
+      {
+        container: '.individual_internship',
         title: '.heading_4_5, .profile h3, .profile, .job-title',
         company: '.heading_6.company_name, .company_name, .company h4, .company-name',
         url: 'a.view_detail_button, a[href*="/internship/detail/"], .view_detail_button, a.btn-primary',
@@ -98,7 +105,10 @@ async function scrapeInternshalaJobs(url) {
           const title = $(el).find(selectorSet.title).first().text().trim();
           const company = $(el).find(selectorSet.company).first().text().trim();
           const relativeUrl = $(el).find(selectorSet.url).first().attr('href');
-          const location = $(el).find(selectorSet.location).first().text().trim();
+          let location = $(el).find(selectorSet.location).first().text().trim();
+          if (!location) {
+            location = $(el).find('.row-1-item').filter((_, row) => /location/i.test($(row).attr('class') || '')).text().trim();
+          }
           
           let fullUrl = '';
           if (relativeUrl) {
@@ -117,7 +127,7 @@ async function scrapeInternshalaJobs(url) {
           if (title && company && fullUrl) {
             jobs.push({ 
               title, 
-              company, 
+              company: company.replace(/\s*Actively hiring\s*/gi, '').trim(), 
               location: location || 'Not specified', 
               url: fullUrl 
             });

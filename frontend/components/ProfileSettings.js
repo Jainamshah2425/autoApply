@@ -1,6 +1,6 @@
 'use client';
 import React, { useState } from 'react';
-
+import { Button } from "@/components/ui/button";
 // Accept both `settings` and `profile` for backward compatibility.
 const ProfileSettings = ({ 
   settings: settingsProp,
@@ -348,12 +348,12 @@ const ProfileSettings = ({
       <div className="pt-4 border-t border-gray-200">
         <h3 className="text-lg font-medium text-red-600 mb-3">Danger Zone</h3>
         <div className="space-y-3">
-          <button className="w-full md:w-auto px-4 py-2 border border-red-300 text-red-700 rounded-md hover:bg-red-50 focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+          <Button variant="outline" className="w-full md:w-auto border-destructive text-destructive hover:bg-destructive/10">
             Export My Data
-          </button>
-          <button className="w-full md:w-auto px-4 py-2 bg-red-600 text-white rounded-md hover:bg-red-700 focus:ring-2 focus:ring-red-500 focus:ring-offset-2 ml-0 md:ml-3">
+          </Button>
+          <Button variant="destructive" className="w-full md:w-auto ml-0 md:ml-3">
             Delete Account
-          </button>
+          </Button>
         </div>
       </div>
     </div>
@@ -377,7 +377,7 @@ const ProfileSettings = ({
   };
 
   return (
-    <div className="bg-white rounded-lg shadow-md">
+    <div className="rounded-lg border border-border bg-card">
       <div className="flex flex-col md:flex-row">
         {/* Settings Navigation */}
         <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-gray-200">
@@ -415,17 +415,19 @@ const ProfileSettings = ({
           {/* Save/Reset Buttons */}
           {hasChanges && (
             <div className="mt-8 pt-6 border-t border-gray-200 flex flex-col md:flex-row gap-3 md:justify-end">
-              <button
+              <Button 
+                variant="outline"
                 onClick={handleReset}
                 disabled={loading}
-                className="w-full md:w-auto px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50"
+                className="w-full md:w-auto"
               >
                 Reset Changes
-              </button>
-              <button
+              </Button>
+              <Button 
+                variant="default"
                 onClick={handleSave}
                 disabled={loading}
-                className="w-full md:w-auto px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 disabled:opacity-50 flex items-center justify-center"
+                className="w-full md:w-auto flex items-center justify-center"
               >
                 {loading ? (
                   <>
@@ -435,7 +437,7 @@ const ProfileSettings = ({
                 ) : (
                   'Save Changes'
                 )}
-              </button>
+              </Button>
             </div>
           )}
         </div>

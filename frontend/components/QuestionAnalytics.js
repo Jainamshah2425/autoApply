@@ -7,7 +7,7 @@ import React from 'react';
 
 const QuestionAnalytics = ({ data }) => {
   if (!data) {
-    return <div className="p-4 bg-white rounded-lg shadow">No analytics data available.</div>;
+    return <div className="p-4 rounded-lg border border-border bg-card text-sm text-muted-foreground">No analytics data available.</div>;
   }
 
   return (

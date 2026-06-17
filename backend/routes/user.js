@@ -168,7 +168,7 @@ router.post('/upload-resume', (req, res) => {
           metadata: {
             fileName: req.file?.originalname || 'resume.pdf',
             fileSize: req.file?.size || 0,
-            uploadPath: filename
+            uploadPath: req.file?.path || 'uploads'
           }
         };
 

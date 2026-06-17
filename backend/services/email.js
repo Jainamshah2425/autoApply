@@ -47,7 +47,7 @@ async function sendUserEmail(oauth2Client, userId, to, subject, message) {
       .toString('base64')
       .replace(/\+/g, '-')
       .replace(/\//g, '_')
-      .replace(/=+\$/, '');
+      .replace(/=+$/, '');
 
     console.log('[Email Service] Sending email via Gmail API...');
     const result = await gmail.users.messages.send({

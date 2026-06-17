@@ -154,7 +154,7 @@ const ContributionHeatmap = ({ data = [], timeRange = 'year', detailed = false }
                      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 
   return (
-    <div className="bg-white rounded-lg p-6">
+    <div className="rounded-lg border border-border bg-card p-6">
       {detailed && (
         <div className="mb-6">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Activity Heatmap</h2>

@@ -2,7 +2,35 @@ import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import axios from 'axios';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const API_TIMEOUT = 5000;
+
+async function syncUserWithBackend({ email, name, image }) {
+  try {
+    const res = await axios.get(
+      `${API_URL}/api/user/by-email/${encodeURIComponent(email)}`,
+      { timeout: API_TIMEOUT }
+    );
+    return res.data._id?.toString() || res.data.userId;
+  } catch (error) {
+    if (error.response?.status !== 404) {
+      console.error('Failed to fetch user for OAuth:', error.message);
+      return null;
+    }
+  }
+
+  try {
+    const createRes = await axios.post(
+      `${API_URL}/api/user/create`,
+      { email, name, image },
+      { timeout: API_TIMEOUT }
+    );
+    return createRes.data._id?.toString() || createRes.data.userId;
+  } catch (error) {
+    console.error('Failed to create user for OAuth:', error.message);
+    return null;
+  }
+}
 
 export default NextAuth({
   providers: [
@@ -12,42 +40,33 @@ export default NextAuth({
     }),
   ],
   secret: process.env.NEXTAUTH_SECRET,
+  pages: {
+    signIn: '/',
+    error: '/',
+  },
   callbacks: {
+    async jwt({ token, user, account }) {
+      if (account && user?.email) {
+        const userId = await syncUserWithBackend({
+          email: user.email,
+          name: user.name,
+          image: user.image,
+        });
+        if (userId) token.userId = userId;
+      }
+      return token;
+    },
     async session({ session, token }) {
-      try {
-        // Fetch user ID from your backend
-        const res = await axios.get(`${API_URL}/api/user/by-email/${session.user.email}`);
-        session.user.id = res.data._id || res.data.userId;
-        console.log('Session callback - User ID set to:', session.user.id);
-      } catch (error) {
-        console.error('Failed to fetch user ID for session:', error.message);
-        // If user doesn't exist, create them
-        try {
-          console.log('Creating new user for:', session.user.email);
-          const createRes = await axios.post(`${API_URL}/api/user/create`, {
-            email: session.user.email,
-            name: session.user.name,
-            image: session.user.image
-          });
-          session.user.id = createRes.data._id || createRes.data.userId;
-          console.log('New user created with ID:', session.user.id);
-        } catch (createError) {
-          console.error('Failed to create user:', createError.message);
-        }
+      if (token.userId && session.user) {
+        session.user.id = token.userId;
       }
       return session;
     },
-    async signIn({ user, account, profile }) {
-      // Log successful sign-in
-      console.log('User signed in:', user.email);
-      return true;
-    },
     async redirect({ url, baseUrl }) {
-      // Ensure redirects go to the correct base URL
-      if (url.startsWith("/")) return `${baseUrl}${url}`;
-      else if (new URL(url).origin === baseUrl) return url;
+      if (url.startsWith('/')) return `${baseUrl}${url}`;
+      if (new URL(url).origin === baseUrl) return url;
       return baseUrl;
-    }
+    },
   },
-  debug: process.env.NODE_ENV === 'development', // Enable debug logging in development
+  debug: process.env.NODE_ENV === 'development',
 });

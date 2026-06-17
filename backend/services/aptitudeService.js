@@ -16,7 +16,7 @@ const TOPIC_MAP = {
  * Generate questions dynamically via LLM.
  * Returns an array of question objects matching the AptitudeQuestion schema.
  */
-async function generateDynamicQuestions(category, topic, difficulty, count) {
+async function generateDynamicQuestions(category, topic, difficulty, count, userId = null) {
   const topicList = topic
     ? [topic]
     : (category && category !== 'mixed')
@@ -62,7 +62,9 @@ Return ONLY a valid JSON array in this exact format:
 Return ONLY the JSON array. No markdown, no code blocks, no extra text.`;
 
   try {
-    const response = await getLLMResponse(prompt);
+    const response = await getLLMResponse(prompt, userId, {
+      maxTokens: Math.min(8000, Math.max(2000, count * 500)),
+    });
     let parsed;
 
     // Try direct parse
@@ -136,7 +138,7 @@ async function generateTest(userId, options = {}) {
   // Step 1: Try to generate dynamic questions via LLM
   let dynamicQuestions = [];
   try {
-    dynamicQuestions = await generateDynamicQuestions(category, topic, difficulty, questionCount);
+    dynamicQuestions = await generateDynamicQuestions(category, topic, difficulty, questionCount, userId);
     console.log(`🤖 LLM generated ${dynamicQuestions.length} dynamic questions`);
   } catch (err) {
     console.warn('LLM generation failed, falling back to static bank:', err.message);
@@ -265,8 +267,11 @@ async function submitTest(attemptId, answers) {
 
   // Process each answer
   for (const q of attempt.questions) {
-    const answer = answers.find(a => a.questionId === q.questionId.toString());
+    const answer = answers.find(
+      (a) => a.questionId?.toString() === q.questionId.toString()
+    );
     const question = questionMap[q.questionId.toString()];
+    if (!question) continue;
 
     if (answer && answer.selectedAnswer !== null && answer.selectedAnswer !== undefined) {
       q.selectedAnswer = answer.selectedAnswer;
@@ -433,4 +438,76 @@ async function getTopics() {
   }));
 }
 
-module.exports = { generateTest, submitTest, getWeakTopics, getUserAnalytics, getTopics };
+const CATEGORIES = ['quantitative', 'logical', 'verbal'];
+
+/**
+ * Add fresh LLM-generated questions to the bank and trim if over capacity.
+ * Called on a schedule and via npm run refresh:aptitude.
+ */
+async function refreshQuestionBank(options = {}) {
+  const perCategory = options.perCategory
+    ?? parseInt(process.env.APTITUDE_REFRESH_PER_CATEGORY || '5', 10);
+  const maxBankSize = options.maxBankSize
+    ?? parseInt(process.env.APTITUDE_MAX_BANK_SIZE || '300', 10);
+
+  const beforeCount = await AptitudeQuestion.countDocuments();
+  const added = { quantitative: 0, logical: 0, verbal: 0 };
+  const errors = [];
+
+  for (const category of CATEGORIES) {
+    try {
+      const batch = await generateDynamicQuestions(category, null, null, perCategory);
+      if (batch.length === 0) {
+        errors.push(`${category}: LLM returned no questions`);
+        continue;
+      }
+      const docs = batch.map((q) => {
+        const { _isDynamic, ...rest } = q;
+        return rest;
+      });
+      await AptitudeQuestion.insertMany(docs);
+      added[category] = docs.length;
+      console.log(`📚 Aptitude refresh: +${docs.length} ${category} questions`);
+    } catch (err) {
+      errors.push(`${category}: ${err.message}`);
+      console.error(`Aptitude refresh failed for ${category}:`, err.message);
+    }
+  }
+
+  const afterInsert = await AptitudeQuestion.countDocuments();
+  let pruned = 0;
+
+  if (afterInsert > maxBankSize) {
+    const excess = afterInsert - maxBankSize;
+    const toRemove = await AptitudeQuestion.find({ timesAttempted: 0 })
+      .sort({ createdAt: 1 })
+      .limit(excess)
+      .select('_id');
+    if (toRemove.length > 0) {
+      await AptitudeQuestion.deleteMany({ _id: { $in: toRemove.map((d) => d._id) } });
+      pruned = toRemove.length;
+      console.log(`📚 Aptitude refresh: pruned ${pruned} unused old questions`);
+    }
+  }
+
+  const finalCount = await AptitudeQuestion.countDocuments();
+
+  return {
+    beforeCount,
+    added,
+    totalAdded: added.quantitative + added.logical + added.verbal,
+    pruned,
+    finalCount,
+    errors,
+  };
+}
+
+module.exports = {
+  generateTest,
+  submitTest,
+  getWeakTopics,
+  getUserAnalytics,
+  getTopics,
+  refreshQuestionBank,
+  generateDynamicQuestions,
+};

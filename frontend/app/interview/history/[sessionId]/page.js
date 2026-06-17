@@ -3,7 +3,6 @@ import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
 import Header from '../../../../components/header';
-import SentimentDashboard from '../../../../components/SentimentDashboard';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 
@@ -119,14 +118,13 @@ export default function SessionDetailPage() {
               )}
             </div>
 
-            {/* Behavioral Analysis Dashboard */}
+            {/* Behavioral Analysis Dashboard disabled temporarily (empty component) */}
             {behavioralAnalysis && (
               <div className="bg-white rounded-lg shadow-md p-6">
                 <h3 className="text-xl font-semibold text-gray-900 mb-4">Behavioral Analysis</h3>
-                <SentimentDashboard 
-                  sentimentData={behavioralAnalysis}
-                  videoMetrics={interviewSession.videoMetrics}
-                />
+                <div className="text-center py-8 text-gray-500">
+                  <p>Sentiment dashboard is currently unavailable.</p>
+                </div>
               </div>
             )}
 

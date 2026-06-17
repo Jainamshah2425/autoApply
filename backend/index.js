@@ -1,4 +1,8 @@
 // index.js
+const dns = require('dns');
+// Some ISPs fail SRV lookups for mongodb+srv — use public DNS resolvers
+dns.setServers(['8.8.8.8', '1.1.1.1']);
+
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
@@ -8,22 +12,24 @@ const validate = require('./middleware/validate');
 
 dotenv.config();
 
-// Diagnostic logs
-console.log('🔧 Environment Check:');
+console.log('Environment check:');
 console.log('- NODE_ENV:', process.env.NODE_ENV || 'not set');
 console.log('- PORT:', process.env.PORT || 'not set');
 console.log('- MONGODB_URI:', process.env.MONGODB_URI ? 'configured' : 'not set');
-console.log('- FASTAPI_URL:', process.env.FASTAPI_URL || 'not set');
 console.log('- GOOGLE_CLIENT_ID:', process.env.GOOGLE_CLIENT_ID ? 'configured' : 'not set');
 
 const app = express();
+app.set('trust proxy', 1);
 
 // Add basic health check endpoint
 app.get('/', (req, res) => {
+  const dbState = mongoose.connection.readyState;
+  const dbStatus = { 0: 'disconnected', 1: 'connected', 2: 'connecting', 3: 'disconnecting' }[dbState] || 'unknown';
   res.json({ 
     status: 'Backend is running!', 
     timestamp: new Date().toISOString(),
-    env: process.env.NODE_ENV || 'development'
+    env: process.env.NODE_ENV || 'development',
+    database: dbStatus,
   });
 });
 
@@ -60,6 +66,7 @@ app.use('/api/aptitude', aptitudeRoutes);
 
 
 const { scheduleAutoApply } = require('./cron/dailyApply.js');
+const { scheduleAptitudeRefresh } = require('./cron/refreshAptitudeQuestions.js');
 const { scheduleKeepAlive } = require('./cron/keepAlive.js');
 
 app.use((req, res) => {
@@ -82,15 +89,34 @@ app.listen(PORT, () => {
 // Connect to MongoDB
 if (process.env.MONGODB_URI) {
   mongoose
-    .connect(process.env.MONGODB_URI)
-    .then(() => {
+    .connect(process.env.MONGODB_URI, {
+      serverSelectionTimeoutMS: 10000,
+    })
+    .then(async () => {
       console.log('✅ MongoDB connected');
-      // Only schedule auto-apply after MongoDB is connected
+      console.log('   Database:', mongoose.connection.db?.databaseName || '(default)');
+      try {
+        const AptitudeQuestion = require('./models/AptitudeQuestion');
+        const aptitudeCount = await AptitudeQuestion.countDocuments();
+        if (aptitudeCount === 0) {
+          console.log('📚 Aptitude bank empty — seeding questions...');
+          const { execSync } = require('child_process');
+          const path = require('path');
+          execSync('node scripts/seedAptitudeIfEmpty.js', {
+            cwd: path.join(__dirname),
+            stdio: 'inherit',
+          });
+        }
+      } catch (seedErr) {
+        console.warn('⚠️  Aptitude seed skipped:', seedErr.message);
+      }
       scheduleAutoApply();
+      scheduleAptitudeRefresh();
     })
     .catch((err) => {
       console.error('❌ MongoDB connection failed:', err.message);
       console.log('⚠️  Server running without database connection');
+      console.log('   Run: npm run test:db   to diagnose');
     });
 } else {
   console.log('⚠️  MONGODB_URI not configured - skipping database connection');
