@@ -1,6 +1,12 @@
 // cron/keepAlive.js
 // Pings the backend every 14 minutes to prevent Render free-tier spin-down.
 // Only active between 07:00–23:00 UTC to stay within the 750-hour free limit.
+//
+// NOTE: This runs INSIDE the Express process, so it only helps once the server
+// is already awake. It CANNOT wake a spun-down instance — when Render idles the
+// service after ~15 min, this cron dies with it. Cold starts are prevented by an
+// EXTERNAL pinger (see .github/workflows/keep-warm.yml and the external cron in
+// the README).
 
 const cron = require('node-cron');
 

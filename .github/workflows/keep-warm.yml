@@ -1,0 +1,55 @@
+name: Keep Backend Warm
+
+# Prevents Render free-tier cold starts by pinging the backend health endpoint
+# from OUTSIDE the server. The in-process node-cron (backend/cron/keepAlive.js)
+# cannot do this: once Render spins the process down, that cron dies with it.
+#
+# Cost: $0 on PUBLIC repos (GitHub Actions minutes are unlimited for public repos).
+# On PRIVATE repos this runs ~4300 times/month and would exceed the 2000 free
+# minutes/month, so prefer the free external pinger (see README / plan) instead.
+#
+# Caveats: GitHub scheduled workflows can drift 5-15 min under load and are
+# auto-disabled after 60 days of repo inactivity. Keep the external pinger as a
+# reliable backup.
+
+on:
+  schedule:
+    # Every 10 minutes, 24/7 (UTC). Render spins down after ~15 min idle, so this
+    # keeps one free service warm within the 750 instance-hours/month budget.
+    # To conserve budget (e.g. if you add more free Render services), restrict to
+    # waking hours instead: '*/10 7-22 * * *'
+    - cron: '*/10 * * * *'
+  workflow_dispatch: {}
+
+# Never let slow/cold pings pile up on top of each other.
+concurrency:
+  group: keep-warm
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping backend health endpoint
+        env:
+          # Set repo secret BACKEND_URL to your real Render URL. Falls back to the
+          # known production URL if the secret is not configured.
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+        run: |
+          URL="${BACKEND_URL:-https://autoapply-xsj0.onrender.com}"
+          URL="${URL%/}"
+          echo "Pinging $URL/ at $(date -u)"
+          # First hit may be a ~50s cold start, so allow a generous timeout and
+          # retry so a waking instance still returns before we give up.
+          code=$(curl -sS -o /dev/null -w '%{http_code}' \
+            --connect-timeout 15 --max-time 120 \
+            --retry 5 --retry-delay 10 --retry-all-errors \
+            "$URL/")
+          echo "HTTP status: $code"
+          if [ "$code" -ge 200 ] && [ "$code" -lt 400 ]; then
+            echo "Backend is warm."
+          else
+            echo "Unexpected status: $code"
+            exit 1
+          fi
