@@ -32,7 +32,7 @@ async function executeCode(code, language, stdin = '') {
     const response = await axios.post(`${PISTON_API_URL}/execute`, {
       language: runtime.language,
       version: runtime.version,
-      files: [{ name: `main.${getExtension(language)}`, content: code }],
+      files: [{ name: getFileName(language), content: code }],
       stdin: stdin,
       compile_timeout: 10000,   // 10s compile timeout
       run_timeout: 5000,        // 5s run timeout
@@ -122,6 +122,13 @@ function getExtension(language) {
     'cpp': 'cpp', 'c': 'c', 'typescript': 'ts'
   };
   return map[language] || 'txt';
+}
+
+function getFileName(language) {
+  // Java requires the file name to match the public class name exactly (Main.java),
+  // or javac rejects it before it ever gets to run.
+  if (language === 'java') return 'Main.java';
+  return `main.${getExtension(language)}`;
 }
 
 module.exports = { executeCode, runTestCases, LANGUAGE_MAP };

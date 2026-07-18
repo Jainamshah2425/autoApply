@@ -2,20 +2,19 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useSession } from 'next-auth/react';
 import Image from 'next/image';
+import Link from 'next/link';
 import Header from '../../components/header';
-import ContributionHeatmap from '../../components/ContributionHeatmap';
 import ProfileStats from '../../components/ProfileStats';
 import ProfileSettings from '../../components/ProfileSettings';
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from '@/components/ui/error-message';
-import { BarChart3, Flame, Trophy, Settings, Loader2, Construction } from 'lucide-react';
+import { BarChart3, Trophy, Settings, Construction, MessageSquare, ArrowRight } from 'lucide-react';
 
 import { api } from '@/lib/api';
 
 // Define navigation tabs outside component to prevent re-creation on each render
 const navigationTabs = [
   { id: 'overview', name: 'Overview', icon: BarChart3 },
-  { id: 'contributions', name: 'Activity', icon: Flame },
   { id: 'achievements', name: 'Achievements', icon: Trophy },
   { id: 'settings', name: 'Settings', icon: Settings }
 ];
@@ -30,19 +29,11 @@ export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
-  const [contributionData, setContributionData] = useState([]);
   const [profileStats, setProfileStats] = useState({});
+  const [recentSessions, setRecentSessions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [timeRange, setTimeRange] = useState('year'); // year, 6months, 3months
-  const [privacySettings, setPrivacySettings] = useState({
-    showEmail: true,
-    showLocation: true,
-    showSocialLinks: true,
-    showStats: true,
-    showContributions: true
-  });
 
   // Set mounted state
   useEffect(() => {
@@ -77,35 +68,17 @@ export default function ProfilePage() {
     }
   }, [session?.user?.email]);
 
-  const loadContributionData = useCallback(async () => {
+  const loadRecentSessions = useCallback(async () => {
     try {
       if (!userProfile?._id) return;
-      
-      const endDate = new Date();
-      const startDate = new Date();
-      
-      switch (timeRange) {
-        case '3months':
-          startDate.setMonth(endDate.getMonth() - 3);
-          break;
-        case '6months':
-          startDate.setMonth(endDate.getMonth() - 6);
-          break;
-        case 'year':
-        default:
-          startDate.setFullYear(endDate.getFullYear() - 1);
-          break;
-      }
 
-      const response = await api.get(
-        `/api/user/contributions/${userProfile._id}?start=${startDate.toISOString()}&end=${endDate.toISOString()}`
-      );
-      setContributionData(response.data);
+      const response = await api.get(`/api/interview/sessions/user/${userProfile._id}?limit=3`);
+      setRecentSessions(response.data.sessions || []);
     } catch (err) {
-      console.error('Failed to load contribution data:', err);
-      setContributionData([]);
+      console.error('Failed to load recent interview sessions:', err);
+      setRecentSessions([]);
     }
-  }, [userProfile?._id, timeRange]);
+  }, [userProfile?._id]);
 
   const loadProfileStats = useCallback(async () => {
     try {
@@ -119,14 +92,6 @@ export default function ProfilePage() {
     }
   }, [userProfile?._id]);
 
-  // Helper function to toggle privacy settings
-  const togglePrivacySetting = (key) => {
-    setPrivacySettings(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
-  };
-
   // Load basic user profile once session email is available
   useEffect(() => {
     if (session?.user?.email) {
@@ -134,94 +99,31 @@ export default function ProfilePage() {
     }
   }, [session?.user?.email, loadUserProfile]);
 
-  // Load contributions and stats when userProfile is ready or timeRange changes
+  // Load stats and recent sessions when userProfile is ready
   useEffect(() => {
     const fetchData = async () => {
       if (!userProfile?._id) return;
       setLoading(true);
       try {
-        await Promise.all([loadContributionData(), loadProfileStats()]);
+        await Promise.all([loadRecentSessions(), loadProfileStats()]);
       } finally {
         setLoading(false);
       }
     };
     fetchData();
-  }, [userProfile?._id, timeRange, loadContributionData, loadProfileStats]);
+  }, [userProfile?._id, loadRecentSessions, loadProfileStats]);
 
-  // Real-time heatmap update listener
-  useEffect(() => {
-    const handleHeatmapUpdate = (event) => {
-      console.log('🔥 Heatmap update detected:', event.detail);
-      
-      // Check if the update is for the current user
-      if (event.detail.userId === userProfile?._id) {
-        console.log('📊 Refreshing heatmap data for current user...');
-        
-        // Refresh contribution data and stats
-        loadContributionData();
-        loadProfileStats();
-        
-        // Optional: Show a notification
-        // You could add a toast notification here
-      }
-    };
-
-    // Only access browser APIs after component is mounted
-    if (mounted && typeof window !== 'undefined') {
-      // Listen for custom heatmap update events
-      window.addEventListener('heatmapUpdated', handleHeatmapUpdate);
-      
-      // Also check localStorage for missed updates (in case page was loaded after update)
-      const checkForMissedUpdates = () => {
-        try {
-          const storedUpdate = localStorage.getItem('heatmapUpdate');
-          if (storedUpdate) {
-            const updateEvent = JSON.parse(storedUpdate);
-            
-            // If update is recent (within last 5 minutes) and for current user
-            const updateAge = Date.now() - updateEvent.timestamp;
-            const fiveMinutes = 5 * 60 * 1000;
-            
-            if (updateAge < fiveMinutes && updateEvent.userId === userProfile?._id) {
-              console.log('📊 Found recent heatmap update, refreshing data...');
-              loadContributionData();
-              loadProfileStats();
-              
-              // Clear the stored update to prevent repeated refreshes
-              localStorage.removeItem('heatmapUpdate');
-            }
-          }
-        } catch (error) {
-          console.warn('Failed to check for missed heatmap updates:', error);
-        }
-      };
-
-      // Check for missed updates when component mounts
-      if (userProfile?._id) {
-        checkForMissedUpdates();
-      }
-    }
-
-    // Cleanup
-    return () => {
-      if (mounted && typeof window !== 'undefined') {
-        window.removeEventListener('heatmapUpdated', handleHeatmapUpdate);
-      }
-    };
-  }, [mounted, userProfile?._id, loadContributionData, loadProfileStats]);
-
-  // Auto-refresh data periodically (fallback for missed updates)
+  // Auto-refresh data periodically
   useEffect(() => {
     if (!userProfile?._id) return;
-    
+
     const refreshInterval = setInterval(() => {
-      console.log('🔄 Auto-refreshing profile data...');
-      loadContributionData();
+      loadRecentSessions();
       loadProfileStats();
     }, 2 * 60 * 1000); // Refresh every 2 minutes
-    
+
     return () => clearInterval(refreshInterval);
-  }, [userProfile?._id, loadContributionData, loadProfileStats]);
+  }, [userProfile?._id, loadRecentSessions, loadProfileStats]);
 
   const updateProfile = async (updatedData) => {
     try {
@@ -233,16 +135,6 @@ export default function ProfilePage() {
       setError('Failed to update profile');
     } finally {
       setLoading(false);
-    }
-  };
-
-  const updatePrivacySettings = async (settings) => {
-    try {
-      await api.put(`/api/user/privacy/${userProfile._id}`, settings);
-      setPrivacySettings(settings);
-    } catch (err) {
-      console.error('Failed to update privacy settings:', err);
-      setError('Failed to update privacy settings');
     }
   };
 
@@ -352,11 +244,6 @@ export default function ProfilePage() {
                 height={128}
                 className="w-32 h-32 rounded-full object-cover border-4 border-white shadow-lg"
               />
-              <div className="absolute -bottom-2 -right-2 bg-green-500 w-8 h-8 rounded-full border-4 border-white flex items-center justify-center">
-                <span className="text-white text-xs font-bold">
-                  {profileStats.level || 1}
-                </span>
-              </div>
             </div>
 
             {/* Profile Info */}
@@ -369,25 +256,17 @@ export default function ProfilePage() {
                   <p className="text-lg text-muted-foreground mb-2">
                     @{userProfile?.username || userProfile?.email?.split('@')[0]}
                   </p>
-                  {privacySettings.showEmail && (
-                    <p className="text-muted-foreground">
-                      {userProfile?.email || session?.user?.email}
-                    </p>
-                  )}
+                  <p className="text-muted-foreground">
+                    {userProfile?.email || session?.user?.email}
+                  </p>
                 </div>
-                
+
                 <div className="flex space-x-3 mt-4 sm:mt-0">
                   <Button
                     variant="default"
                     onClick={() => setActiveTab('settings')}
                   >
                     Edit Profile
-                  </Button>
-                  <Button
-                    variant="secondary"
-                    onClick={() => setActiveTab('privacy')}
-                  >
-                    Privacy
                   </Button>
                 </div>
               </div>
@@ -401,7 +280,7 @@ export default function ProfilePage() {
 
               {/* Location & Links */}
               <div className="flex flex-wrap items-center gap-6 mt-4 text-sm text-muted-foreground">
-                {privacySettings.showLocation && userProfile?.location && (
+                {userProfile?.location && (
                   <div className="flex items-center">
                     <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
                       <path fillRule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clipRule="evenodd" />
@@ -470,39 +349,38 @@ export default function ProfilePage() {
         <div className="space-y-8">
           {activeTab === 'overview' && (
             <>
-              {privacySettings.showStats && (
-                <ProfileStats stats={profileStats} />
-              )}
-              
-              {privacySettings.showContributions && (
-                <div className="bg-card rounded-xl border border-border p-6">
-                  <div className="flex justify-between items-center mb-6">
-                    <h2 className="text-xl font-bold text-foreground">Activity Overview</h2>
-                    <select
-                      value={timeRange}
-                      onChange={(e) => setTimeRange(e.target.value)}
-                      className="px-3 py-2 bg-background border border-border rounded-lg text-foreground text-sm focus:ring-1 focus:ring-primary focus:border-primary outline-none transition-colors"
-                    >
-                      <option value="3months">Last 3 months</option>
-                      <option value="6months">Last 6 months</option>
-                      <option value="year">Last year</option>
-                    </select>
-                  </div>
-                  <ContributionHeatmap 
-                    data={contributionData} 
-                    timeRange={timeRange}
-                  />
-                </div>
-              )}
-            </>
-          )}
+              <ProfileStats stats={profileStats} />
 
-          {activeTab === 'contributions' && privacySettings.showContributions && (
-            <ContributionHeatmap 
-              data={contributionData} 
-              timeRange={timeRange}
-              detailed={true}
-            />
+              <div className="bg-card rounded-xl border border-border p-6">
+                <div className="flex justify-between items-center mb-6">
+                  <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+                    <MessageSquare className="w-5 h-5" /> Recent Interviews
+                  </h2>
+                  <Link href="/interview/history" className="text-sm text-primary hover:underline flex items-center gap-1">
+                    View all <ArrowRight className="w-3.5 h-3.5" />
+                  </Link>
+                </div>
+                {recentSessions.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">No interview sessions yet.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {recentSessions.map((s) => (
+                      <div key={s.sessionId} className="flex items-center justify-between text-sm border-b border-border last:border-0 pb-3 last:pb-0">
+                        <div>
+                          <div className="text-foreground font-medium">
+                            {s.status === 'completed' ? 'Completed session' : 'Session'} · {new Date(s.createdAt).toLocaleDateString()}
+                          </div>
+                          <div className="text-muted-foreground line-clamp-1">{s.jobDescription}</div>
+                        </div>
+                        {s.sessionMetrics?.averageScore != null && (
+                          <span className="text-muted-foreground shrink-0 ml-4">Avg {Math.round(s.sessionMetrics.averageScore)}/10</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
           )}
 
           {activeTab === 'achievements' && (
@@ -518,44 +396,10 @@ export default function ProfilePage() {
           )}
 
           {activeTab === 'settings' && (
-            <ProfileSettings 
+            <ProfileSettings
               profile={userProfile}
               onUpdate={updateProfile}
             />
-          )}
-
-          {activeTab === 'privacy' && (
-            <div className="bg-card rounded-xl border border-border p-6">
-              <h2 className="text-xl font-bold text-foreground mb-6">Privacy Settings</h2>
-              <div className="space-y-4">
-                {Object.entries(privacySettings).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between">
-                    <label className="text-foreground capitalize">
-                      {key.replace(/([A-Z])/g, ' $1').toLowerCase()}
-                    </label>
-                    <button
-                      onClick={() => togglePrivacySetting(key)}
-                      className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
-                        value ? 'bg-primary' : 'bg-muted'
-                      }`}
-                    >
-                      <span
-                        className={`inline-block h-4 w-4 transform rounded-full bg-background transition-transform ${
-                          value ? 'translate-x-6' : 'translate-x-1'
-                        }`}
-                      />
-                    </button>
-                  </div>
-                ))}
-              </div>
-              <Button
-                variant="default"
-                onClick={() => updatePrivacySettings(privacySettings)}
-                className="mt-6"
-              >
-                Save Privacy Settings
-              </Button>
-            </div>
           )}
         </div>
       </div>

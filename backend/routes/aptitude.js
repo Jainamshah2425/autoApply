@@ -126,7 +126,7 @@ router.get('/history/:userId', async (req, res) => {
     const history = await AptitudeAttempt.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })
       .limit(20)
-      .select('testType category score totalQuestions percentage totalTimeSeconds status completedAt');
+      .select('testType category score totalQuestions percentage totalTimeSeconds status completedAt createdAt');
 
     res.json({ success: true, history });
   } catch (error) {

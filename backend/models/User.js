@@ -33,7 +33,6 @@ const UserSchema = new mongoose.Schema({
       showPhone: { type: Boolean, default: false },
       showLinkedIn: { type: Boolean, default: true },
       showGitHub: { type: Boolean, default: true },
-      showContributions: { type: Boolean, default: true },
       showStats: { type: Boolean, default: true },
       showAchievements: { type: Boolean, default: true },
       profileVisibility: { type: String, default: 'public' }
@@ -108,7 +107,7 @@ const UserSchema = new mongoose.Schema({
       of: Number
     }
   },
-  // Activity tracking for heatmap
+  // Daily activity log used by heatmapService/userStatsService for streaks and leveling
   contributions: [{
     date: { type: String, required: true }, // YYYY-MM-DD format
     count: { type: Number, default: 1 },

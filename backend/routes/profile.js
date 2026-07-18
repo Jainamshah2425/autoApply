@@ -1,7 +1,6 @@
 const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
-const Video = require('../models/Video');
 const InterviewSession = require('../models/InterviewSession');
 
 // Get user profile with comprehensive data
@@ -91,20 +90,6 @@ router.get('/stats/:userId', async (req, res) => {
     res.json(stats);
   } catch (error) {
     console.error('Error fetching user stats:', error);
-    res.status(500).json({ error: 'Internal server error' });
-  }
-});
-
-// Get user contributions for heatmap
-router.get('/contributions/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { year = new Date().getFullYear() } = req.query;
-    
-    const contributions = await getUserContributions(userId, parseInt(year));
-    res.json(contributions);
-  } catch (error) {
-    console.error('Error fetching user contributions:', error);
     res.status(500).json({ error: 'Internal server error' });
   }
 });
@@ -216,73 +201,6 @@ async function getUserStats(userId) {
   } catch (error) {
     console.error('Error calculating user stats:', error);
     return {};
-  }
-}
-
-// Helper function to get user contributions for heatmap
-async function getUserContributions(userId, year = new Date().getFullYear()) {
-  try {
-    const startDate = new Date(year, 0, 1);
-    const endDate = new Date(year + 1, 0, 1);
-
-    // Get all interview sessions and videos for the year
-    const [interviews, videos] = await Promise.all([
-      InterviewSession.find({
-        userId,
-        createdAt: { $gte: startDate, $lt: endDate }
-      }).select('createdAt topic'),
-      Video.find({
-        userId,
-        createdAt: { $gte: startDate, $lt: endDate }
-      }).select('createdAt')
-    ]);
-
-    // Create daily contribution map
-    const contributions = {};
-    
-    // Initialize all days of the year with 0
-    for (let d = new Date(startDate); d < endDate; d.setDate(d.getDate() + 1)) {
-      const dateKey = d.toISOString().split('T')[0];
-      contributions[dateKey] = {
-        date: dateKey,
-        count: 0,
-        interviews: 0,
-        videos: 0,
-        topics: new Set()
-      };
-    }
-
-    // Count interviews
-    interviews.forEach(interview => {
-      const dateKey = interview.createdAt.toISOString().split('T')[0];
-      if (contributions[dateKey]) {
-        contributions[dateKey].interviews++;
-        contributions[dateKey].count++;
-        if (interview.topic) {
-          contributions[dateKey].topics.add(interview.topic);
-        }
-      }
-    });
-
-    // Count videos
-    videos.forEach(video => {
-      const dateKey = video.createdAt.toISOString().split('T')[0];
-      if (contributions[dateKey]) {
-        contributions[dateKey].videos++;
-        contributions[dateKey].count++;
-      }
-    });
-
-    // Convert topics Set to Array and return
-    const result = Object.values(contributions).map(day => ({
-      ...day,
-      topics: Array.from(day.topics)
-    }));
-
-    return result;
-  } catch (error) {
-    console.error('Error calculating user contributions:', error);
-    return [];
   }
 }
 

@@ -14,7 +14,7 @@ import { useUserId } from '@/hooks/useUserId';
 import { api, getErrorMessage } from '@/lib/api';
 import LiveSession from './live-session';
 import {
-  Loader2, ClipboardCheck, MessageSquare, Brain, Code, Mic,
+  Loader2, ClipboardCheck, MessageSquare, Brain, Code,
   BarChart, MessageCircle, CheckCircle, TrendingUp, Target, RefreshCw, Play,
 } from 'lucide-react';
 
@@ -38,13 +38,6 @@ const MODES = [
     label: 'Live Technical',
     icon: <Brain className="w-8 h-8 text-primary" />,
     description: 'Concepts, system design, and domain deep-dives',
-    flow: 'live',
-  },
-  {
-    id: 'coding',
-    label: 'Live Coding',
-    icon: <Code className="w-8 h-8 text-primary" />,
-    description: 'Live coding with Monaco editor, test cases, and AI review',
     flow: 'live',
   },
 ];
@@ -71,13 +64,10 @@ export default function InterviewPage() {
   const [feedback, setFeedback] = useState(null);
   const [improvedAnswer, setImprovedAnswer] = useState('');
   const [practiceInsights, setPracticeInsights] = useState(null);
-  const [isListeningPractice, setIsListeningPractice] = useState(false);
-  const practiceRecognitionRef = useRef(null);
 
   // Live flow
   const [messages, setMessages] = useState([]);
   const [userInput, setUserInput] = useState('');
-  const [isListening, setIsListening] = useState(false);
   const [liveSummary, setLiveSummary] = useState(null);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [code, setCode] = useState('');
@@ -102,10 +92,9 @@ export default function InterviewPage() {
   useEffect(() => {
     if (!currentCodingProblem) return;
     const starter = currentCodingProblem.starterCode?.[language];
-    if (starter && !code.trim()) {
-      setCode(starter);
-    }
-  }, [currentCodingProblem, language, code]);
+    const fallbackComment = language === 'python' ? '# TODO: implement your solution here\n' : '// TODO: implement your solution here\n';
+    setCode(starter || fallbackComment);
+  }, [currentCodingProblem, language]);
 
   function resetSession() {
     setPhase('setup');
@@ -127,41 +116,6 @@ export default function InterviewPage() {
     setCurrentCodingProblem(null);
     setError(null);
     setSuccess(null);
-  }
-
-  function togglePracticeSpeech() {
-    if (isListeningPractice) {
-      practiceRecognitionRef.current?.stop();
-      setIsListeningPractice(false);
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError('Speech recognition is not supported in your browser. Please use Chrome.');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      if (finalTranscript) {
-        setAnswer((prev) => (prev ? `${prev} ${finalTranscript}` : finalTranscript));
-      }
-    };
-    recognition.onerror = () => setIsListeningPractice(false);
-    recognition.onend = () => setIsListeningPractice(false);
-    practiceRecognitionRef.current = recognition;
-    recognition.start();
-    setIsListeningPractice(true);
   }
 
   async function startSession() {
@@ -284,14 +238,9 @@ export default function InterviewPage() {
     await completePracticeSession();
   }
 
-  async function handleLiveSend(recognitionRef, setListening) {
+  async function handleLiveSend() {
     const text = userInput.trim();
     if (!text || busy) return;
-
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setListening(false);
-    }
 
     setMessages((prev) => [...prev, { role: 'user', content: text }]);
     setUserInput('');
@@ -428,9 +377,6 @@ export default function InterviewPage() {
         userInput={userInput}
         setUserInput={setUserInput}
         isLoading={busy}
-        isListening={isListening}
-        setIsListening={setIsListening}
-        setError={setError}
         elapsedTime={elapsedTime}
         onSend={handleLiveSend}
         onEnd={endLiveSession}
@@ -450,7 +396,7 @@ export default function InterviewPage() {
   return (
     <PageLayout
       title="AI Interview"
-      description="Practice with detailed feedback or simulate a real interview — behavioral, technical, or coding."
+      description="Practice with detailed feedback or simulate a real interview — behavioral or technical."
       actions={
         <Button variant="outline" asChild>
           <Link href="/interview/history">View history</Link>
@@ -525,22 +471,12 @@ export default function InterviewPage() {
                   <Textarea
                     value={answer}
                     onChange={(e) => setAnswer(e.target.value)}
-                    placeholder="Type your answer here, or use the microphone..."
+                    placeholder="Type your answer here..."
                     rows={8}
                     className="flex-1"
                   />
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
-                  <Button
-                    type="button"
-                    variant={isListeningPractice ? 'destructive' : 'outline'}
-                    size="icon"
-                    onClick={togglePracticeSpeech}
-                    className={isListeningPractice ? 'animate-pulse' : ''}
-                    title="Speech to text"
-                  >
-                    <Mic className="w-4 h-4" />
-                  </Button>
                   <Button onClick={analyzeAnswer} disabled={busy}>
                     {busy ? 'Analyzing...' : 'Analyze answer'}
                   </Button>

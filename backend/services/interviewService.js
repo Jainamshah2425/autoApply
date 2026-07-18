@@ -409,40 +409,6 @@ async function analyzeAnswer(question, answer, audioMetrics = null, sessionId, q
 }
 
 /**
- * Transcribes audio using Web Speech API (free) - client-side implementation
- * For server-side, we'll use a simple implementation that returns placeholder text
- */
-async function transcribeAudio(audioBuffer) {
-  // This is a placeholder function.
-  // You can replace this with a real transcription service.
-  return Promise.resolve('This is a dummy transcription.');
-}
-
-/**
- * Web Speech API transcription (client-side implementation)
- * This should be implemented on the frontend
- */
-function getWebSpeechTranscription() {
-  return `
-    // Client-side implementation using Web Speech API
-    const recognition = new (window.SpeechRecognition || window.webkitSpeechRecognition)();
-    recognition.continuous = true;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-    
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      return finalTranscript;
-    };
-  `;
-}
-
-/**
  * Completes interview session and generates comprehensive insights
  */
 async function completeSession(sessionId, userId, questionTimings) {

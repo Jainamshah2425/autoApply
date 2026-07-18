@@ -7,6 +7,7 @@ import { useUserId } from '@/hooks/useUserId';
 import { PageSkeleton } from '@/components/ui/skeleton';
 import { api } from '@/lib/api';
 import { ErrorMessage } from '@/components/ui/error-message';
+import Link from 'next/link';
 
 const CATEGORIES = [
   { id: 'mixed', label: 'Mixed', icon: <Target className="w-8 h-8 text-primary" /> },
@@ -52,6 +53,7 @@ export default function AptitudePage() {
   const [analytics, setAnalytics] = useState(null);
   const questionStartTime = useRef(Date.now());
   const submitRef = useRef(null);
+  const [showConfirmSubmit, setShowConfirmSubmit] = useState(false);
 
   useEffect(() => {
     fetchTopics();
@@ -206,6 +208,11 @@ export default function AptitudePage() {
         <Header />
         <div className="max-w-4xl mx-auto px-4 py-10">
           {error && <div className="mb-6"><ErrorMessage title="Error" message={error} /></div>}
+          <div className="flex justify-end mb-4">
+            <Button variant="outline" size="sm" asChild>
+              <Link href="/aptitude/history">View past attempts</Link>
+            </Button>
+          </div>
           <div className="text-center mb-10">
             <h1 className="text-3xl font-semibold tracking-tight mb-3 flex items-center justify-center gap-3">
               <BarChart className="w-10 h-10 text-primary" /> Aptitude Practice
@@ -313,7 +320,7 @@ export default function AptitudePage() {
           <Button
             variant="default"
             size="sm"
-            onClick={handleSubmit}
+            onClick={() => setShowConfirmSubmit(true)}
             disabled={isLoading}
           >
             Submit Test
@@ -385,12 +392,37 @@ export default function AptitudePage() {
 
             <Button
               variant="default"
-              onClick={currentIndex === questions.length - 1 ? handleSubmit : handleNext}
+              onClick={currentIndex === questions.length - 1 ? () => setShowConfirmSubmit(true) : handleNext}
             >
               {currentIndex === questions.length - 1 ? 'Submit' : 'Next'} <ChevronRight className="w-4 h-4 ml-1" />
             </Button>
           </div>
         </div>
+
+        {showConfirmSubmit && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4">
+            <div className="bg-card border border-border rounded-2xl shadow-xl max-w-sm w-full p-6">
+              <h3 className="text-lg font-semibold text-card-foreground mb-2">Submit test?</h3>
+              <p className="text-sm text-muted-foreground mb-6">
+                {answeredCount} of {questions.length} question{questions.length === 1 ? '' : 's'} answered.
+                {answeredCount < questions.length && ' Unanswered questions will be marked incorrect.'}
+                {' '}You can&apos;t change your answers after submitting.
+              </p>
+              <div className="flex justify-end gap-3">
+                <Button variant="outline" onClick={() => setShowConfirmSubmit(false)} disabled={isLoading}>
+                  Cancel
+                </Button>
+                <Button
+                  variant="default"
+                  onClick={() => { setShowConfirmSubmit(false); handleSubmit(); }}
+                  disabled={isLoading}
+                >
+                  {isLoading ? 'Submitting...' : 'Submit'}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
       </main>
     );
   }

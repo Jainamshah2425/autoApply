@@ -1,18 +1,17 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import Header from '@/components/header';
 import { Button } from '@/components/ui/button';
 import {
-  Loader2, Play, Mic, RefreshCw, HelpCircle, FileText,
+  Loader2, Play, RefreshCw, HelpCircle, FileText,
 } from 'lucide-react';
 
 const MonacoEditor = dynamic(() => import('@monaco-editor/react'), { ssr: false });
 
 const LANGUAGES = [
   { id: 'python', label: 'Python', monacoId: 'python' },
-  { id: 'javascript', label: 'JavaScript', monacoId: 'javascript' },
   { id: 'java', label: 'Java', monacoId: 'java' },
   { id: 'cpp', label: 'C++', monacoId: 'cpp' },
 ];
@@ -25,9 +24,6 @@ export default function LiveSession({
   userInput,
   setUserInput,
   isLoading,
-  isListening,
-  setIsListening,
-  setError,
   elapsedTime,
   onSend,
   onEnd,
@@ -42,7 +38,6 @@ export default function LiveSession({
   currentCodingProblem,
 }) {
   const chatEndRef = useRef(null);
-  const recognitionRef = useRef(null);
   const inputRef = useRef(null);
 
   useEffect(() => {
@@ -55,48 +50,10 @@ export default function LiveSession({
     return `${m.toString().padStart(2, '0')}:${sec.toString().padStart(2, '0')}`;
   };
 
-  const toggleSpeech = useCallback(() => {
-    if (isListening) {
-      recognitionRef.current?.stop();
-      setIsListening(false);
-      return;
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!SpeechRecognition) {
-      setError('Speech recognition is not supported in your browser. Please use Chrome.');
-      return;
-    }
-
-    const recognition = new SpeechRecognition();
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognition.lang = 'en-US';
-
-    recognition.onresult = (event) => {
-      let finalTranscript = '';
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        if (event.results[i].isFinal) {
-          finalTranscript += event.results[i][0].transcript;
-        }
-      }
-      if (finalTranscript) {
-        setUserInput((prev) => prev + ' ' + finalTranscript);
-      }
-    };
-
-    recognition.onerror = () => setIsListening(false);
-    recognition.onend = () => setIsListening(false);
-
-    recognitionRef.current = recognition;
-    recognition.start();
-    setIsListening(true);
-  }, [isListening, setUserInput, setIsListening, setError]);
-
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      onSend(recognitionRef, setIsListening);
+      onSend();
     }
   };
 
@@ -171,27 +128,18 @@ export default function LiveSession({
 
           <div className="p-4 border-t border-border bg-card/50 backdrop-blur supports-[backdrop-filter]:bg-card/50">
             <div className="flex items-center gap-3">
-              <Button
-                variant={isListening ? 'destructive' : 'outline'}
-                size="icon"
-                onClick={toggleSpeech}
-                className={`rounded-full shrink-0 ${isListening ? 'animate-pulse' : ''}`}
-                title={isListening ? 'Stop listening' : 'Start speaking'}
-              >
-                <Mic className="w-4 h-4" />
-              </Button>
               <textarea
                 ref={inputRef}
                 value={userInput}
                 onChange={(e) => setUserInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isListening ? 'Listening... speak now' : 'Type your answer or use the microphone...'}
+                placeholder="Type your answer..."
                 className="flex-1 bg-background border border-border rounded-xl px-4 py-3 text-foreground placeholder-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary outline-none resize-none text-sm shadow-sm"
                 rows={1}
               />
               <Button
                 variant="default"
-                onClick={() => onSend(recognitionRef, setIsListening)}
+                onClick={() => onSend()}
                 disabled={!userInput.trim() || isLoading}
                 className="rounded-xl px-6"
               >
@@ -228,7 +176,7 @@ export default function LiveSession({
                 <p className="text-xs text-gray-400 mb-2 leading-relaxed">{currentCodingProblem.description}</p>
                 {currentCodingProblem.functionSignature && (
                   <div className="mb-2 text-[11px] font-mono p-2 bg-[#2d2d2d] rounded">
-                    <span className="text-gray-500 mr-2">def</span>
+                    <span className="text-gray-500 mr-2">Signature:</span>
                     <span className="text-green-300">{currentCodingProblem.functionSignature}</span>
                   </div>
                 )}

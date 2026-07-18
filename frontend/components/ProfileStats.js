@@ -8,15 +8,11 @@ export default function ProfileStats({ stats = {} }) {
     totalQuestions = 0,
     averageScore = 0,
     favoriteTopics = [],
-    level = 1,
-    experiencePoints = 0,
-    nextLevelPoints = 1000,
     weeklyGoal = 5,
     weeklyProgress = 0,
     currentStreak = 0,
   } = stats;
 
-  const xpPercent = Math.min((experiencePoints / nextLevelPoints) * 100, 100);
   const weeklyPercent = Math.min((weeklyProgress / weeklyGoal) * 100, 100);
 
   const statCards = [
@@ -28,18 +24,6 @@ export default function ProfileStats({ stats = {} }) {
 
   return (
     <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <CardTitle>Level {level}</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground mb-3">{experiencePoints} / {nextLevelPoints} XP</p>
-          <div className="w-full bg-muted rounded-full h-2">
-            <div className="bg-primary h-2 rounded-full transition-all" style={{ width: `${xpPercent}%` }} />
-          </div>
-        </CardContent>
-      </Card>
-
       <Card>
         <CardHeader>
           <CardTitle>Weekly goal</CardTitle>

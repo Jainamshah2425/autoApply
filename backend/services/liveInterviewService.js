@@ -84,6 +84,7 @@ RULES:
 - Present 2-3 coding problems total, increasing in difficulty
 - Set shouldContinue to false ONLY for final closing remarks
 - Keep responses concise
+- The candidate can code in Python, Java, or C++. "starterCode" is REQUIRED to contain all three keys — "python", "java", AND "cpp" — every single time you present a problem or set codingProblem to non-null. Never omit a language. Never include any other language key.
 - ALWAYS respond with a JSON object:
 {
   "message": "Your spoken response/question to the candidate",
@@ -99,7 +100,6 @@ RULES:
     "functionSignature": "def solve(nums: List[int]) -> int:",
     "starterCode": {
       "python": "from typing import List\\n\\n# TODO: implement the function below\\ndef solve(nums: List[int]) -> int:\\n    pass\\n",
-      "javascript": "// TODO: implement the function below\\nfunction solve(nums) {\\n  // nums: number[]\\n}\\n",
       "java": "import java.util.*;\\n\\nclass Solution {\\n    // TODO: implement the method below\\n    public int solve(int[] nums) {\\n        return 0;\\n    }\\n}\\n",
       "cpp": "#include <bits/stdc++.h>\\nusing namespace std;\\n\\n// TODO: implement the function below\\nint solve(vector<int>& nums) {\\n    return 0;\\n}\\n"
     },

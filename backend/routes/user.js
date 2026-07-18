@@ -84,7 +84,6 @@ router.post('/create', async (req, res) => {
           showEmail: true,
           showLocation: true,
           showSocialLinks: true,
-          showContributions: true,
           showStats: true,
           showAchievements: true
         }
@@ -204,40 +203,9 @@ router.get('/by-email/:email', async (req, res) => {
     if (!user) {
       return res.status(404).json({ error: 'User not found' });
     }
-    console.log('Found user:', user); // Log the user object
     res.json(user);
   } catch (error) {
     console.error('Error finding user:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// GET /api/user/contributions/:userId - Return user's activity data
-router.get('/contributions/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { start, end } = req.query;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    let contributions = user.contributions || [];
-
-    // Filter by date range if provided
-    if (start && end) {
-      const startDate = new Date(start).toISOString().split('T')[0];
-      const endDate = new Date(end).toISOString().split('T')[0];
-      
-      contributions = contributions.filter(contrib => 
-        contrib.date >= startDate && contrib.date <= endDate
-      );
-    }
-
-    res.json(contributions);
-  } catch (error) {
-    console.error('Error fetching contributions:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -334,49 +302,6 @@ router.put('/privacy/:userId', async (req, res) => {
     res.json({ success: true, privacy: user.settings.privacy });
   } catch (error) {
     console.error('Error updating privacy settings:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// Helper endpoint to add contribution data
-router.post('/add-contribution/:userId', async (req, res) => {
-  try {
-    const { userId } = req.params;
-    const { type, description } = req.body;
-
-    const today = new Date().toISOString().split('T')[0];
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-
-    // Find or create today's contribution entry
-    const existingContribution = user.contributions.find(c => c.date === today);
-    
-    if (existingContribution) {
-      existingContribution.count += 1;
-      existingContribution.activities.push({
-        type,
-        description,
-        timestamp: new Date()
-      });
-    } else {
-      user.contributions.push({
-        date: today,
-        count: 1,
-        activities: [{
-          type,
-          description,
-          timestamp: new Date()
-        }]
-      });
-    }
-
-    await user.save();
-    res.json({ success: true, message: 'Contribution added' });
-  } catch (error) {
-    console.error('Error adding contribution:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
