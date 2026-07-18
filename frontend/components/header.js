@@ -29,7 +29,7 @@ export default function Header() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/80 backdrop-blur-md">
       <div className="max-w-6xl mx-auto px-4 h-14 flex justify-between items-center">
         <Link href="/" className="text-base font-semibold tracking-tight text-foreground">
-          AutoApplyAI
+          PrepPilot
         </Link>
 
         {/* Desktop Nav */}

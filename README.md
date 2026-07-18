@@ -1,4 +1,4 @@
-# AutoApplyAI
+# PrepPilot
 
 AI-powered internship prep: text mock interviews, live AI interviews, aptitude tests, job search, and Gmail applications.
 

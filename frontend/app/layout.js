@@ -9,7 +9,7 @@ const inter = Inter({
 });
 
 export const metadata = {
-  title: 'AutoApplyAI — Interview Prep & Job Tools',
+  title: 'PrepPilot — Interview Prep & Job Tools',
   description: 'AI-powered mock interviews, aptitude tests, and job application tools.',
   themeColor: '#0F1117',
 };
