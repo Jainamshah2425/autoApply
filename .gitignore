@@ -87,6 +87,7 @@ test_*.py
 # ...except real Jest suites colocated with backend source
 !backend/middleware/*.test.js
 !backend/services/*.test.js
+!backend/routes/*.test.js
 
 # Specific test files
 comprehensive_*_test.*

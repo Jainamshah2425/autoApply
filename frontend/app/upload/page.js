@@ -13,7 +13,7 @@ import { SuccessMessage } from '@/components/ui/success-message';
 import { PageSkeleton } from '@/components/ui/skeleton';
 import { useUserId } from '@/hooks/useUserId';
 import { api, API_URL, getErrorMessage } from '@/lib/api';
-import { Upload, FileText, Send, Mail } from 'lucide-react';
+import { Upload, FileText, Send, Mail, ClipboardCheck } from 'lucide-react';
 
 function UploadPageContent() {
   const { userId, loading, session } = useUserId();
@@ -27,6 +27,10 @@ function UploadPageContent() {
   const [status, setStatus] = useState(null);
   const [error, setError] = useState(null);
   const [isGmailConnected, setIsGmailConnected] = useState(false);
+  const [reviewJobTitle, setReviewJobTitle] = useState('');
+  const [reviewJobDescription, setReviewJobDescription] = useState('');
+  const [review, setReview] = useState(null);
+  const [reviewLoading, setReviewLoading] = useState(false);
 
   useEffect(() => {
     const gmailStatus = searchParams.get('gmail');
@@ -53,9 +57,29 @@ function UploadPageContent() {
     try {
       setError(null);
       await api.post('/api/user/upload-resume', formData);
-      setStatus('Resume uploaded successfully.');
+      setStatus('Resume uploaded successfully. You can review it below.');
+      setReview(null);
     } catch (err) {
       setError(getErrorMessage(err, 'Failed to upload resume'));
+    }
+  }
+
+  async function reviewResume() {
+    if (!userId) return;
+    try {
+      setError(null);
+      setReviewLoading(true);
+      const res = await api.post('/api/llm/review-resume', {
+        jobTitle: reviewJobTitle,
+        jobDescription: reviewJobDescription,
+      });
+      setReview(res.data.review);
+      setStatus('Resume review ready.');
+    } catch (err) {
+      setReview(null);
+      setError(getErrorMessage(err, 'Resume review failed. Upload a resume first if you have not.'));
+    } finally {
+      setReviewLoading(false);
     }
   }
 
@@ -124,7 +148,7 @@ function UploadPageContent() {
   }
 
   return (
-    <PageLayout title="Upload & Apply" description="Upload your resume, generate a cover letter, and send via Gmail.">
+    <PageLayout title="Upload & Apply" description="Upload your resume, get AI feedback, generate a cover letter, and send via Gmail.">
       <div className="space-y-6 max-w-2xl">
         {error && <ErrorMessage title="Error" message={error} />}
         {status && <SuccessMessage title="Done" message={status} />}
@@ -142,6 +166,78 @@ function UploadPageContent() {
             <Button onClick={uploadResume} disabled={!resumeFile} className="w-full">Upload resume</Button>
           </CardContent>
         </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2"><ClipboardCheck className="w-4 h-4" /> Resume review</CardTitle>
+            <CardDescription>
+              Get structured feedback from your latest uploaded resume. Optionally tailor it to a target role.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <Input
+              placeholder="Target job title (optional)"
+              value={reviewJobTitle}
+              onChange={(e) => setReviewJobTitle(e.target.value)}
+            />
+            <Textarea
+              placeholder="Job description / target role (optional)"
+              value={reviewJobDescription}
+              onChange={(e) => setReviewJobDescription(e.target.value)}
+              rows={4}
+              className="text-sm"
+            />
+            <Button onClick={reviewResume} disabled={!userId || reviewLoading} className="w-full">
+              {reviewLoading ? 'Reviewing…' : 'Review resume'}
+            </Button>
+          </CardContent>
+        </Card>
+
+        {review && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Review results</CardTitle>
+              <CardDescription>{review.summary}</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5 text-sm">
+              <div>
+                <p className="text-muted-foreground mb-1">Overall score</p>
+                <p className="text-3xl font-semibold tabular-nums">{review.overallScore}/100</p>
+              </div>
+
+              {[
+                { title: 'Strengths', items: review.strengths },
+                { title: 'Gaps', items: review.gaps },
+                { title: 'ATS tips', items: review.atsTips },
+              ].map((section) => (
+                <div key={section.title}>
+                  <p className="font-medium mb-2">{section.title}</p>
+                  {section.items?.length ? (
+                    <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                      {section.items.map((item) => (
+                        <li key={item}>{item}</li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="text-muted-foreground">None noted.</p>
+                  )}
+                </div>
+              ))}
+
+              <div>
+                <p className="font-medium mb-2">Section notes</p>
+                <dl className="space-y-2 text-muted-foreground">
+                  {['contact', 'experience', 'skills', 'education'].map((key) => (
+                    <div key={key}>
+                      <dt className="capitalize text-foreground">{key}</dt>
+                      <dd>{review.sectionFeedback?.[key] || 'No feedback.'}</dd>
+                    </div>
+                  ))}
+                </dl>
+              </div>
+            </CardContent>
+          </Card>
+        )}
 
         <Card>
           <CardHeader>

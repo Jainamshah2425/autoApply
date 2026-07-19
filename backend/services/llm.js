@@ -69,15 +69,20 @@ async function getLLMResponse(prompt, userId = null, options = {}) {
       throw new Error('Missing GROQ_API_KEY environment variable');
     }
 
+    const payload = {
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'user', content: prompt },
+      ],
+      max_tokens: options.maxTokens || 1500,
+    };
+    if (options.jsonMode) {
+      payload.response_format = { type: 'json_object' };
+    }
+
     const response = await axios.post(
       'https://api.groq.com/openai/v1/chat/completions',
-      {
-        model: 'llama-3.3-70b-versatile',
-        messages: [
-          { role: 'user', content: prompt },
-        ],
-        max_tokens: options.maxTokens || 1500,
-      },
+      payload,
       {
         headers: {
           Authorization: `Bearer ${process.env.GROQ_API_KEY}`,

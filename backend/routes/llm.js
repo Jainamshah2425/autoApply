@@ -1,9 +1,9 @@
 const express = require('express');
 const router = express.Router();
-const User = require('../models/User');
 const Resume = require('../models/Resume');
 const { generateCoverLetter } = require('../services/coverLetter');
 const { generateImprovedAnswer } = require('../services/llm');
+const { generateResumeReview } = require('../services/resumeReview');
 const validate = require('../middleware/validate');
 const { groqRateLimiter } = require('../middleware/rateLimiter');
 const { requireAuth } = require('../middleware/auth');
@@ -20,6 +20,13 @@ const improvedAnswerSchema = {
   body: {
     question: { required: true, type: 'string', minLength: 1 },
     userAnswer: { required: true, type: 'string', minLength: 1 }
+  }
+};
+
+const resumeReviewSchema = {
+  body: {
+    jobTitle: { required: false, type: 'string', maxLength: 200 },
+    jobDescription: { required: false, type: 'string', maxLength: 8000 },
   }
 };
 
@@ -60,6 +67,29 @@ router.post('/generate-improved-answer', requireAuth, groqRateLimiter, validate(
     });
     
     res.json({ improvedAnswer });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/review-resume', requireAuth, groqRateLimiter, validate(resumeReviewSchema), async (req, res, next) => {
+  const { jobTitle = '', jobDescription = '' } = req.body;
+  const userId = req.auth.userId;
+
+  try {
+    const resume = await Resume.findOne({ user: userId }).sort({ createdAt: -1 });
+    if (!resume) {
+      return res.status(404).json({ error: 'Resume not found for this user. Upload a resume first.' });
+    }
+
+    const review = await generateResumeReview({
+      resumeText: resume.text,
+      jobTitle,
+      jobDescription,
+      userId,
+    });
+
+    res.json({ review });
   } catch (err) {
     next(err);
   }
