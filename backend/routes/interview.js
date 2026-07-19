@@ -136,10 +136,15 @@ router.post('/complete-session', async (req, res) => {
 router.get('/session/:sessionId', async (req, res) => {
   try {
     const InterviewSession = require('../models/InterviewSession');
-    const session = await InterviewSession.findOne({ sessionId: req.params.sessionId }).populate('user');
+    const session = await InterviewSession.findOne({ sessionId: req.params.sessionId })
+      .populate('user', 'name email profilePicture currentTitle company');
 
     if (!session) {
       return res.status(404).json({ error: 'Session not found' });
+    }
+
+    if (session.user._id.toString() !== req.auth.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
     }
 
     res.json({ success: true, session, message: 'Session retrieved successfully' });

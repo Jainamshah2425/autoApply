@@ -2,11 +2,10 @@
 import { useState, useEffect } from 'react';
 import { useSession } from 'next-auth/react';
 import axios from 'axios';
+import { api } from '@/lib/api';
 import Header from '../../../../components/header';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://autoapply-xsj0.onrender.com';
 
 export default function SessionDetailPage() {
   const { data: session } = useSession();
@@ -21,8 +20,8 @@ export default function SessionDetailPage() {
   useEffect(() => {
     if (sessionId) {
       console.log('Loading session details for:', sessionId);
-      axios
-        .get(`${API_URL}/api/interview/session/${sessionId}`)
+      api
+        .get(`/api/interview/session/${sessionId}`)
         .then((res) => {
           console.log('Session data:', res.data);
           setInterviewSession(res.data.session || res.data);
