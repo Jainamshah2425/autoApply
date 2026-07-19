@@ -1,5 +1,6 @@
 import axios from 'axios';
-import { getAccessToken } from './authToken';
+import { getSession } from 'next-auth/react';
+import { getAccessToken, setAccessToken } from './authToken';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -8,8 +9,21 @@ export const api = axios.create({
   timeout: 120000,
 });
 
-api.interceptors.request.use((config) => {
-  const token = getAccessToken();
+api.interceptors.request.use(async (config) => {
+  let token = getAccessToken();
+
+  // SessionTokenSync fills the cache in useEffect; if a request races that
+  // (or sync never minted a token until a later session refresh), pull it now.
+  if (!token && typeof window !== 'undefined') {
+    try {
+      const session = await getSession();
+      token = session?.accessToken || null;
+      if (token) setAccessToken(token);
+    } catch {
+      // leave token null — backend will return 401
+    }
+  }
+
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }

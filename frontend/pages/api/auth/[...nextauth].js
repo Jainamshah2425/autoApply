@@ -4,7 +4,8 @@ import axios from 'axios';
 import jwt from 'jsonwebtoken';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-const API_TIMEOUT = 5000;
+// Render free tier cold starts often exceed 5s; keep this high enough to create/fetch the user.
+const API_TIMEOUT = 45000;
 
 async function syncUserWithBackend({ email, name, image }) {
   try {
@@ -47,23 +48,34 @@ export default NextAuth({
   },
   callbacks: {
     async jwt({ token, user, account }) {
-      if (account && user?.email) {
-        const userId = await syncUserWithBackend({
-          email: user.email,
-          name: user.name,
-          image: user.image,
-        });
+      // On first sign-in, or if a prior cold-start sync failed, resolve Mongo user id.
+      const email = user?.email || token.email;
+      const name = user?.name || token.name;
+      const image = user?.image || token.picture;
+      if (email && (!token.userId || (account && user?.email))) {
+        const userId = await syncUserWithBackend({ email, name, image });
         if (userId) token.userId = userId;
       }
       return token;
     },
     async session({ session, token }) {
-      if (token.userId && session.user) {
-        session.user.id = token.userId;
+      let userId = token.userId;
+      // Last-chance sync for this session response if jwt still has no userId
+      // (e.g. first login hit a cold backend; subsequent /api/auth/session can recover).
+      if (!userId && session.user?.email) {
+        userId = await syncUserWithBackend({
+          email: session.user.email,
+          name: session.user.name,
+          image: session.user.image,
+        });
+      }
+
+      if (userId && session.user && process.env.NEXTAUTH_SECRET) {
+        session.user.id = userId;
         // Short-lived bearer token the frontend attaches to backend API calls,
         // signed with the same secret NextAuth already uses for its own JWT.
         session.accessToken = jwt.sign(
-          { userId: token.userId, email: session.user.email },
+          { userId, email: session.user.email },
           process.env.NEXTAUTH_SECRET,
           { expiresIn: '1h' }
         );

@@ -187,9 +187,18 @@ function UploadPageContent() {
               rows={4}
               className="text-sm"
             />
-            <Button onClick={reviewResume} disabled={!userId || reviewLoading} className="w-full">
+            <Button
+              onClick={reviewResume}
+              disabled={!userId || !session?.accessToken || reviewLoading}
+              className="w-full"
+            >
               {reviewLoading ? 'Reviewing…' : 'Review resume'}
             </Button>
+            {userId && !session?.accessToken && (
+              <p className="text-sm text-muted-foreground">
+                Preparing your session… if this stays stuck, sign out and sign in again.
+              </p>
+            )}
           </CardContent>
         </Card>
 
