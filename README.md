@@ -1,8 +1,5 @@
 # PrepPilot
-
-![CI](https://github.com/Jainamshah2425/autoApply/actions/workflows/ci.yml/badge.svg)
-
-AI-powered internship prep: text mock interviews, live AI interviews, aptitude tests, job search, and Gmail applications.
+AI-powered internship prep: text mock interviews, live AI interviews, aptitude tests, job search.
 
 ## Architecture
 
@@ -15,16 +12,8 @@ flowchart LR
     Backend --> Gmail[Gmail API]
 ```
 
-The frontend signs users in via NextAuth, mints a short-lived JWT, and
-attaches it as a bearer token on every backend request. The backend verifies
-that token and checks it against any `:userId` in the request — see
-**Security** below.
-
 ## Local development
 
-### Prerequisites
-- Node.js 18+
-- MongoDB (Atlas or local)
 
 ### 1. Backend (port 5000)
 ```powershell
@@ -61,26 +50,6 @@ npm run smoke      # sanity check that every route module still loads
 ```
 
 Frontend tests aren't set up yet — this is a known gap, not an oversight.
-
-## Deployment
-
-| Service | Platform |
-|---------|----------|
-| Frontend | Vercel (`frontend/`) |
-| Backend | Render (`render.yaml`) |
-| Database | MongoDB Atlas |
-
-Render's free tier spins down after ~15 min idle, costing the next request a
-~50s cold start. `.github/workflows/keep-warm.yml` pings the health check
-(`GET /`) every 10 minutes to prevent that — set a `BACKEND_URL` repo secret
-to your Render URL, or use a free external cron (e.g. [cron-job.org](https://cron-job.org)) as a more reliable backup.
-
-## Security
-
-Every backend route that returns or modifies a specific user's data requires
-a valid bearer token (`backend/middleware/auth.js`), and any `:userId` in the
-URL is checked against the authenticated user — a mismatch is rejected with
-403, not just 401. Covered end-to-end by `backend/middleware/auth.test.js`.
 
 ## Features
 
