@@ -1,6 +1,7 @@
 import NextAuth from 'next-auth';
 import GoogleProvider from 'next-auth/providers/google';
 import axios from 'axios';
+import jwt from 'jsonwebtoken';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 const API_TIMEOUT = 5000;
@@ -59,6 +60,13 @@ export default NextAuth({
     async session({ session, token }) {
       if (token.userId && session.user) {
         session.user.id = token.userId;
+        // Short-lived bearer token the frontend attaches to backend API calls,
+        // signed with the same secret NextAuth already uses for its own JWT.
+        session.accessToken = jwt.sign(
+          { userId: token.userId, email: session.user.email },
+          process.env.NEXTAUTH_SECRET,
+          { expiresIn: '1h' }
+        );
       }
       return session;
     },

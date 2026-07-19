@@ -36,6 +36,7 @@
 // routes/jobs.js
 const express = require('express');
 const { scrapeInternshalaJobs, autoApplyToJobs } = require('../services/jobService');
+const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
 
@@ -92,17 +93,10 @@ router.get('/scrape', async (req, res) => {
   }
 });
 
-router.post('/auto-apply', async (req, res) => {
+router.post('/auto-apply', requireAuth, async (req, res) => {
   try {
-    const { userId } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ 
-        success: false,
-        error: 'User ID is required' 
-      });
-    }
-    
+    const userId = req.auth.userId;
+
     console.log(`Auto-applying for user: ${userId}`);
     const result = await autoApplyToJobs(userId);
     

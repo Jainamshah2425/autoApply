@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const { seedUserProfileData } = require('../utils/seedUserData');
 const { syncUserStats } = require('../services/userStatsService');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
 
 // Configure multer with file validation
 const storage = multer.diskStorage({
@@ -102,6 +103,23 @@ router.post('/create', async (req, res) => {
   }
 });
 
+router.get('/by-email/:email', async (req, res) => {
+  try {
+    const user = await User.findOne({ email: req.params.email });
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    res.json(user);
+  } catch (error) {
+    console.error('Error finding user:', error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Everything below requires a verified bearer token, and every :userId route
+// must match the authenticated caller — see backend/middleware/auth.js.
+router.use(requireAuth);
+
 router.post('/upload-resume', (req, res) => {
   upload.single('resume')(req, res, async (err) => {
     if (err) {
@@ -115,11 +133,7 @@ router.post('/upload-resume', (req, res) => {
     }
 
     try {
-      const userId = req.body.userId;
-
-      if (!userId) {
-        return res.status(400).json({ error: 'User ID is required' });
-      }
+      const userId = req.auth.userId;
 
       if (!req.file) {
         return res.status(400).json({ error: 'Resume file is missing' });
@@ -148,7 +162,7 @@ router.post('/upload-resume', (req, res) => {
 
       // Update user with resume file path
       const updatedUser = await User.findByIdAndUpdate(
-        userId, 
+        userId,
         { resume: newResume._id }, // Save the new resume's ID
         { new: true }
       );
@@ -161,7 +175,7 @@ router.post('/upload-resume', (req, res) => {
       // Track resume upload activity using HeatmapService
       try {
         const HeatmapService = require('../services/heatmapService');
-        
+
         const activityDetails = {
           description: 'Uploaded resume document',
           metadata: {
@@ -178,15 +192,15 @@ router.post('/upload-resume', (req, res) => {
       }
 
       console.log('Resume uploaded successfully for user:', userId);
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: 'Resume uploaded successfully',
         filePath: req.file.path
       });
 
     } catch (error) {
       console.error('Error processing resume:', error);
-      
+
       // Clean up uploaded file if it exists on error
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
@@ -197,21 +211,8 @@ router.post('/upload-resume', (req, res) => {
   });
 });
 
-router.get('/by-email/:email', async (req, res) => {
-  try {
-    const user = await User.findOne({ email: req.params.email });
-    if (!user) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    res.json(user);
-  } catch (error) {
-    console.error('Error finding user:', error);
-    res.status(500).json({ error: 'Server error' });
-  }
-});
-
 // GET /api/user/stats/:userId - Return user stats
-router.get('/stats/:userId', async (req, res) => {
+router.get('/stats/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
 
@@ -247,7 +248,7 @@ router.get('/stats/:userId', async (req, res) => {
 });
 
 // PUT /api/user/profile/:userId - Update user profile fields
-router.put('/profile/:userId', async (req, res) => {
+router.put('/profile/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const updateFields = req.body;
@@ -284,7 +285,7 @@ router.put('/profile/:userId', async (req, res) => {
 });
 
 // PUT /api/user/privacy/:userId - Save privacy settings
-router.put('/privacy/:userId', async (req, res) => {
+router.put('/privacy/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const privacySettings = req.body;
@@ -307,7 +308,7 @@ router.put('/privacy/:userId', async (req, res) => {
 });
 
 // Helper endpoint to update user stats
-router.post('/update-stats/:userId', async (req, res) => {
+router.post('/update-stats/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const statsUpdate = req.body;
@@ -339,11 +340,8 @@ router.post('/update-stats/:userId', async (req, res) => {
 
 router.post('/set-preferences', async (req, res) => {
   try {
-    const { userId, preferences } = req.body;
-    
-    if (!userId) {
-      return res.status(400).json({ error: 'User ID is required' });
-    }
+    const { preferences } = req.body;
+    const userId = req.auth.userId;
 
     const user = await User.findByIdAndUpdate(
       userId, 
@@ -363,7 +361,7 @@ router.post('/set-preferences', async (req, res) => {
 });
 
 // Development endpoint to seed sample data for testing
-router.post('/seed-sample-data/:userId', async (req, res) => {
+router.post('/seed-sample-data/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const result = await seedUserProfileData(userId);
@@ -375,7 +373,7 @@ router.post('/seed-sample-data/:userId', async (req, res) => {
 });
 
 // Sync user stats from interview sessions and video analysis
-router.post('/sync-stats/:userId', async (req, res) => {
+router.post('/sync-stats/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const stats = await syncUserStats(userId);

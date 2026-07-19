@@ -131,4 +131,4 @@ function getFileName(language) {
   return `main.${getExtension(language)}`;
 }
 
-module.exports = { executeCode, runTestCases, LANGUAGE_MAP };
+module.exports = { executeCode, runTestCases, LANGUAGE_MAP, getExtension, getFileName };

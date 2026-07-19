@@ -4,6 +4,7 @@ const router = express.Router();
 const { generateTest, submitTest, getUserAnalytics, getTopics } = require('../services/aptitudeService.js');
 const AptitudeQuestion = require('../models/AptitudeQuestion.js');
 const AptitudeAttempt = require('../models/AptitudeAttempt.js');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
 
 /**
  * GET /api/aptitude/topics
@@ -20,13 +21,29 @@ router.get('/topics', async (req, res) => {
 });
 
 /**
+ * GET /api/aptitude/question-count
+ * Get total question count.
+ */
+router.get('/question-count', async (req, res) => {
+  try {
+    const count = await AptitudeQuestion.countDocuments();
+    res.json({ success: true, count });
+  } catch (error) {
+    res.status(500).json({ error: 'Failed to count questions' });
+  }
+});
+
+// Everything below requires a verified bearer token.
+router.use(requireAuth);
+
+/**
  * POST /api/aptitude/generate-test
  * Generate a test based on preferences.
  */
 router.post('/generate-test', async (req, res) => {
   try {
-    const { userId, category, topic, difficulty, questionCount, testType, timeLimitMinutes } = req.body;
-    if (!userId) return res.status(400).json({ error: 'userId is required' });
+    const { category, topic, difficulty, questionCount, testType, timeLimitMinutes } = req.body;
+    const userId = req.auth.userId;
 
     const test = await generateTest(userId, {
       category, topic, difficulty,
@@ -54,6 +71,12 @@ router.post('/submit', async (req, res) => {
       return res.status(400).json({ error: 'answers array is required' });
     }
 
+    const attempt = await AptitudeAttempt.findById(attemptId).select('userId');
+    if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+    if (attempt.userId.toString() !== req.auth.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
+
     const results = await submitTest(attemptId, answers);
     res.json({ success: true, ...results });
   } catch (error) {
@@ -66,7 +89,7 @@ router.post('/submit', async (req, res) => {
  * GET /api/aptitude/analytics/:userId
  * Get user analytics.
  */
-router.get('/analytics/:userId', async (req, res) => {
+router.get('/analytics/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const analytics = await getUserAnalytics(req.params.userId);
     res.json({ success: true, ...analytics });
@@ -84,6 +107,9 @@ router.get('/attempt/:attemptId', async (req, res) => {
   try {
     const attempt = await AptitudeAttempt.findById(req.params.attemptId);
     if (!attempt) return res.status(404).json({ error: 'Attempt not found' });
+    if (attempt.userId.toString() !== req.auth.userId) {
+      return res.status(403).json({ error: 'Forbidden' });
+    }
 
     // Fetch question details for review (only if completed)
     if (attempt.status === 'completed') {
@@ -121,7 +147,7 @@ router.get('/attempt/:attemptId', async (req, res) => {
  * GET /api/aptitude/history/:userId
  * Get test history for a user.
  */
-router.get('/history/:userId', async (req, res) => {
+router.get('/history/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const history = await AptitudeAttempt.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })
@@ -132,19 +158,6 @@ router.get('/history/:userId', async (req, res) => {
   } catch (error) {
     console.error('Error fetching history:', error);
     res.status(500).json({ error: 'Failed to fetch history' });
-  }
-});
-
-/**
- * GET /api/aptitude/question-count
- * Get total question count.
- */
-router.get('/question-count', async (req, res) => {
-  try {
-    const count = await AptitudeQuestion.countDocuments();
-    res.json({ success: true, count });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to count questions' });
   }
 });
 

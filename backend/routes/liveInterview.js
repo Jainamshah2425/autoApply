@@ -3,11 +3,13 @@
 
 const express = require('express');
 const router = express.Router();
-const mongoose = require('mongoose');
 const { startSession, respondToAnswer, endSession } = require('../services/liveInterviewService.js');
 const { executeCode, runTestCases } = require('../services/codeExecutionService.js');
 const LiveInterviewSession = require('../models/LiveInterviewSession.js');
 const { liveInterviewRateLimiter } = require('../middleware/rateLimiter');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 /**
  * POST /api/live-interview/start
@@ -15,12 +17,9 @@ const { liveInterviewRateLimiter } = require('../middleware/rateLimiter');
  */
 router.post('/start', liveInterviewRateLimiter, async (req, res) => {
   try {
-    const { userId, jobDescription, mode } = req.body;
+    const { jobDescription, mode } = req.body;
+    const userId = req.auth.userId;
 
-    if (!userId)          return res.status(400).json({ success: false, error: 'userId is required' });
-    if (!mongoose.Types.ObjectId.isValid(userId)) {
-      return res.status(400).json({ success: false, error: 'Invalid userId' });
-    }
     if (!jobDescription)  return res.status(400).json({ success: false, error: 'jobDescription is required' });
     if (!['behavioral', 'technical', 'coding'].includes(mode)) {
       return res.status(400).json({ error: 'mode must be behavioral, technical, or coding' });
@@ -135,7 +134,7 @@ router.get('/session/:sessionId', async (req, res) => {
  * GET /api/live-interview/sessions/user/:userId
  * Get all live interview sessions for a user.
  */
-router.get('/sessions/user/:userId', async (req, res) => {
+router.get('/sessions/user/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const sessions = await LiveInterviewSession.find({ userId: req.params.userId })
       .sort({ createdAt: -1 })

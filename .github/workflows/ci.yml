@@ -41,4 +41,5 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
       - run: npm ci
-      - run: node scripts/smoke.js
+      - run: npm run smoke
+      - run: npm test

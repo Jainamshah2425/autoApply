@@ -98,8 +98,8 @@ function UploadPageContent() {
   }
 
   function connectGmail() {
-    if (userId && typeof window !== 'undefined') {
-      window.location.href = `${API_URL}/api/auth/google?userId=${userId}`;
+    if (session?.accessToken && typeof window !== 'undefined') {
+      window.location.href = `${API_URL}/api/auth/google?token=${session.accessToken}`;
     }
   }
 

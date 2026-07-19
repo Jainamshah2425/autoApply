@@ -6,6 +6,7 @@ const { generateCoverLetter } = require('../services/coverLetter');
 const { generateImprovedAnswer } = require('../services/llm');
 const validate = require('../middleware/validate');
 const { groqRateLimiter } = require('../middleware/rateLimiter');
+const { requireAuth } = require('../middleware/auth');
 
 const coverLetterSchema = {
   body: {
@@ -22,8 +23,9 @@ const improvedAnswerSchema = {
   }
 };
 
-router.post('/generate-cover-letter', groqRateLimiter, validate(coverLetterSchema), async (req, res, next) => {
-  const { jobTitle, companyName, skills, userId } = req.body;
+router.post('/generate-cover-letter', requireAuth, groqRateLimiter, validate(coverLetterSchema), async (req, res, next) => {
+  const { jobTitle, companyName, skills } = req.body;
+  const userId = req.auth.userId;
 
   try {
     const resume = await Resume.findOne({ user: userId }).sort({ createdAt: -1 });
@@ -38,16 +40,15 @@ router.post('/generate-cover-letter', groqRateLimiter, validate(coverLetterSchem
   }
 });
 
-router.post('/generate-improved-answer', groqRateLimiter, validate(improvedAnswerSchema), async (req, res, next) => {
-  const { question, userAnswer, jobDescription, userId } = req.body;
+router.post('/generate-improved-answer', requireAuth, groqRateLimiter, validate(improvedAnswerSchema), async (req, res, next) => {
+  const { question, userAnswer, jobDescription } = req.body;
+  const userId = req.auth.userId;
 
   try {
     let resumeText = '';
-    if (userId) {
-      const resume = await Resume.findOne({ user: userId }).sort({ createdAt: -1 });
-      if (resume) {
-        resumeText = resume.text;
-      }
+    const resume = await Resume.findOne({ user: userId }).sort({ createdAt: -1 });
+    if (resume) {
+      resumeText = resume.text;
     }
 
     const improvedAnswer = await generateImprovedAnswer({

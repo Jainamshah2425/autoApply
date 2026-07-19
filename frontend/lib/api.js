@@ -1,10 +1,19 @@
 import axios from 'axios';
+import { getAccessToken } from './authToken';
 
 export const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export const api = axios.create({
   baseURL: API_URL,
   timeout: 120000,
+});
+
+api.interceptors.request.use((config) => {
+  const token = getAccessToken();
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
 });
 
 export function getErrorMessage(error, fallback = 'Something went wrong') {

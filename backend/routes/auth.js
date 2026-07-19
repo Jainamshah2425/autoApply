@@ -1,17 +1,29 @@
 // routes/auth.js
 const { google } = require('googleapis');
 const express = require('express');
+const jwt = require('jsonwebtoken');
 const { oauth2Client } = require('../config/google.js');
 const User = require('../models/User.js');
 
 const router = express.Router();
 
-// Redirect to Google login
+// Redirect to Google login. This is a full browser navigation (not an axios
+// call), so the caller can't send an Authorization header — instead it must
+// pass the same short-lived access token the frontend already mints for API
+// calls, verified here before it's trusted as the OAuth `state`.
 router.get('/google', (req, res) => {
-  const { userId } = req.query;
-  if (!userId) {
-    return res.status(400).send('Missing userId');
+  const { token } = req.query;
+  if (!token) {
+    return res.status(401).send('Missing token');
   }
+
+  let userId;
+  try {
+    userId = jwt.verify(token, process.env.NEXTAUTH_SECRET).userId;
+  } catch (err) {
+    return res.status(401).send('Invalid or expired token');
+  }
+
   const authUrl = oauth2Client.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',

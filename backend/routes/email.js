@@ -2,11 +2,14 @@ const express = require('express');
 const { sendUserEmail } = require('../services/email');
 const gmailCheck = require('../middleware/gmailCheck');
 const User = require('../models/User');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
 
 const router = express.Router();
 
+router.use(requireAuth);
+
 // Debug endpoint to check Gmail connection status
-router.get('/gmail-status/:userId', async (req, res) => {
+router.get('/gmail-status/:userId', requireOwnUserId(), async (req, res) => {
   const { userId } = req.params;
   
   try {
@@ -33,7 +36,10 @@ router.get('/gmail-status/:userId', async (req, res) => {
   }
 });
 
-router.post('/send', gmailCheck, async (req, res) => {
+router.post('/send', (req, res, next) => {
+  req.body.userId = req.auth.userId;
+  next();
+}, gmailCheck, async (req, res) => {
   const { userId, to, subject, message } = req.body;
   console.log(`📧 Received email request for user: ${userId} to: ${to}`);
 

@@ -7,15 +7,19 @@ const {
   completeSession
 } = require('../services/interviewService');
 const pdf = require('pdf-parse');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
 
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 }
 });
 
+router.use(requireAuth);
+
 router.post('/generate-questions', upload.single('jobDescriptionFile'), async (req, res) => {
   try {
-    const { jobDescription, userId } = req.body;
+    const { jobDescription } = req.body;
+    const userId = req.auth.userId;
     let description = jobDescription;
 
     if (req.file) {
@@ -25,10 +29,6 @@ router.post('/generate-questions', upload.single('jobDescriptionFile'), async (r
 
     if (!description || typeof description !== 'string') {
       return res.status(400).json({ error: 'Job description is required and must be a string' });
-    }
-
-    if (!userId || typeof userId !== 'string') {
-      return res.status(400).json({ error: 'User ID is required and must be a string' });
     }
 
     const result = await generateQuestions(description.trim(), userId);
@@ -86,10 +86,11 @@ router.post('/analyze-answer', async (req, res) => {
 
 router.post('/complete-session', async (req, res) => {
   try {
-    const { sessionId, userId, questionTimings } = req.body;
+    const { sessionId, questionTimings } = req.body;
+    const userId = req.auth.userId;
 
-    if (!sessionId || !userId) {
-      return res.status(400).json({ error: 'Session ID and user ID are required' });
+    if (!sessionId) {
+      return res.status(400).json({ error: 'Session ID is required' });
     }
 
     const result = await completeSession(sessionId, userId, questionTimings);
@@ -151,7 +152,7 @@ router.get('/session/:sessionId', async (req, res) => {
   }
 });
 
-router.get('/sessions/user/:userId', async (req, res) => {
+router.get('/sessions/user/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const { page = 1, limit = 10, status } = req.query;
@@ -193,7 +194,6 @@ router.get('/sessions/user/:userId', async (req, res) => {
 router.delete('/session/:sessionId', async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { userId } = req.body;
     const InterviewSession = require('../models/InterviewSession');
 
     const session = await InterviewSession.findOne({ sessionId });
@@ -201,7 +201,7 @@ router.delete('/session/:sessionId', async (req, res) => {
       return res.status(404).json({ error: 'Session not found' });
     }
 
-    if (session.user.toString() !== userId) {
+    if (session.user.toString() !== req.auth.userId) {
       return res.status(403).json({ error: 'Unauthorized to delete this session' });
     }
 
@@ -216,7 +216,7 @@ router.delete('/session/:sessionId', async (req, res) => {
   }
 });
 
-router.get('/stats/user/:userId', async (req, res) => {
+router.get('/stats/user/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const InterviewSession = require('../models/InterviewSession');
     const mongoose = require('mongoose');

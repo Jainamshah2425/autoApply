@@ -1,6 +1,7 @@
 'use client';
 
 import { SessionProvider } from 'next-auth/react';
+import SessionTokenSync from '../components/SessionTokenSync';
 
 export default function Providers({ children }) {
   return (
@@ -9,6 +10,7 @@ export default function Providers({ children }) {
       refetchInterval={5 * 60} // 5 minutes
       refetchOnWindowFocus={false}
     >
+      <SessionTokenSync />
       {children}
     </SessionProvider>
   );

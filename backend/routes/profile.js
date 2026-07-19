@@ -2,9 +2,12 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const InterviewSession = require('../models/InterviewSession');
+const { requireAuth, requireOwnUserId } = require('../middleware/auth');
+
+router.use(requireAuth);
 
 // Get user profile with comprehensive data
-router.get('/profile/:userId', async (req, res) => {
+router.get('/profile/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     
@@ -16,9 +19,6 @@ router.get('/profile/:userId', async (req, res) => {
 
     // Get user statistics
     const stats = await getUserStats(userId);
-    
-    // Get user contributions for heatmap
-    const contributions = await getUserContributions(userId);
 
     // Get user settings
     const settings = user.settings || {};
@@ -40,7 +40,6 @@ router.get('/profile/:userId', async (req, res) => {
         company: user.company
       },
       stats,
-      contributions,
       settings
     };
 
@@ -52,7 +51,7 @@ router.get('/profile/:userId', async (req, res) => {
 });
 
 // Update user profile
-router.put('/profile/:userId', async (req, res) => {
+router.put('/profile/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const updates = req.body;
@@ -83,7 +82,7 @@ router.put('/profile/:userId', async (req, res) => {
 });
 
 // Get user statistics
-router.get('/stats/:userId', async (req, res) => {
+router.get('/stats/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const stats = await getUserStats(userId);
@@ -95,7 +94,7 @@ router.get('/stats/:userId', async (req, res) => {
 });
 
 // Update user settings
-router.put('/settings/:userId', async (req, res) => {
+router.put('/settings/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
     const { settings } = req.body;

@@ -84,6 +84,10 @@ test_*.py
 *_test.py
 *.test.py
 
+# ...except real Jest suites colocated with backend source
+!backend/middleware/*.test.js
+!backend/services/*.test.js
+
 # Specific test files
 comprehensive_*_test.*
 debug_*.js
