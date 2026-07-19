@@ -1,6 +1,24 @@
 # PrepPilot
 
+![CI](https://github.com/Jainamshah2425/autoApply/actions/workflows/ci.yml/badge.svg)
+
 AI-powered internship prep: text mock interviews, live AI interviews, aptitude tests, job search, and Gmail applications.
+
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser --> Frontend[Next.js on Vercel]
+    Frontend --> Backend[Express API on Render]
+    Backend --> Mongo[MongoDB Atlas]
+    Backend --> Groq[Groq LLM API]
+    Backend --> Gmail[Gmail API]
+```
+
+The frontend signs users in via NextAuth, mints a short-lived JWT, and
+attaches it as a bearer token on every backend request. The backend verifies
+that token and checks it against any `:userId` in the request — see
+**Security** below.
 
 ## Local development
 
@@ -14,6 +32,7 @@ cd backend
 npm install
 copy .env.example .env
 # Fill MONGODB_URI, GROQ_API_KEY, GOOGLE_* in .env
+# NEXTAUTH_SECRET must match the frontend's value exactly (see Security below)
 npm run dev
 ```
 
@@ -33,6 +52,16 @@ Open http://localhost:3000
 node execution/seed_aptitude_questions.js
 ```
 
+## Testing
+
+```powershell
+cd backend
+npm test          # Jest: auth middleware (401/403/200 cases) + code-execution helpers
+npm run smoke      # sanity check that every route module still loads
+```
+
+Frontend tests aren't set up yet — this is a known gap, not an oversight.
+
 ## Deployment
 
 | Service | Platform |
@@ -41,46 +70,21 @@ node execution/seed_aptitude_questions.js
 | Backend | Render (`render.yaml`) |
 | Database | MongoDB Atlas |
 
-### Keep-warm (avoiding Render cold starts)
+Render's free tier spins down after ~15 min idle, costing the next request a
+~50s cold start. `.github/workflows/keep-warm.yml` pings the health check
+(`GET /`) every 10 minutes to prevent that — set a `BACKEND_URL` repo secret
+to your Render URL, or use a free external cron (e.g. [cron-job.org](https://cron-job.org)) as a more reliable backup.
 
-Render free web services spin down after ~15 min of inactivity, so the next
-request pays a ~50s cold start. The in-process cron (`backend/cron/keepAlive.js`)
-cannot fix this because it dies when the service spins down. An **external**
-pinger to `GET /` (the Render health check) is required. Both options below are
-$0.
+## Security
 
-**Option A — GitHub Actions (in-repo, free on public repos)**
-
-The workflow `.github/workflows/keep-warm.yml` pings `GET /` every 10 minutes.
-
-1. Confirm your backend's production URL in the Render dashboard (e.g.
-   `https://autoapply-xsj0.onrender.com`).
-2. In GitHub: **Settings → Secrets and variables → Actions → New repository
-   secret**, name it `BACKEND_URL`, value = your Render URL. (If omitted, the
-   workflow falls back to the URL baked into the file.)
-3. Test it: **Actions → Keep Backend Warm → Run workflow** and confirm the step
-   returns HTTP 200.
-
-Notes: free/unlimited on public repos. On **private** repos this exceeds the
-2000 free Actions minutes/month and can incur charges — use Option B instead.
-GitHub scheduled runs can drift 5-15 min and are auto-disabled after 60 days of
-repo inactivity, so Option B is the more reliable primary/backup.
-
-**Option B — External cron (guaranteed $0 on any repo)**
-
-Use a free uptime/cron service such as [cron-job.org](https://cron-job.org) or
-[UptimeRobot](https://uptimerobot.com):
-
-- URL: `https://<your-render-url>/`
-- Method: `GET`, interval: every **5-10 minutes**, 24/7
-- Expected status: `200`
-- Enable failure email alerts (this doubles as uptime monitoring)
-
-Uses zero GitHub minutes, no 60-day disable, and reliable sub-minute scheduling.
+Every backend route that returns or modifies a specific user's data requires
+a valid bearer token (`backend/middleware/auth.js`), and any `:userId` in the
+URL is checked against the authenticated user — a mismatch is rejected with
+403, not just 401. Covered end-to-end by `backend/middleware/auth.test.js`.
 
 ## Features
 
-- **AI Interview** — practice with feedback or live behavioral/technical/coding sessions (`/interview`)
+- **AI Interview** — practice with feedback, or live behavioral/technical interviews (`/interview`)
 - **Aptitude tests** — quant/logical/verbal (`/aptitude`)
 - **Job search** — scrape + cover letter + Gmail (`/dashboard`, `/upload`)
-- **Profile** — stats and activity heatmap (`/profile`)
+- **Profile** — stats and interview/aptitude history (`/profile`)
