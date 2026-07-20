@@ -39,6 +39,7 @@
 const axios = require('axios');
 const cheerio = require('cheerio');
 const Job = require('../models/Job.js');
+const Application = require('../models/Application.js');
 
 async function scrapeInternshalaJobs(url) {
   try {
@@ -178,11 +179,23 @@ async function scrapeInternshalaJobs(url) {
 
     console.log(`Found ${uniqueJobs.length} unique jobs`);
 
-    // Clear existing jobs and insert new ones
-    await Job.deleteMany({});
-    await Job.insertMany(uniqueJobs);
-    
-    return uniqueJobs;
+    // Upsert by URL instead of wiping the collection on every scrape — a refresh no
+    // longer discards `applied` state (Job.applied) or breaks the Application FK
+    // (job._id) for jobs that are still listed. Also lets the unique index on `url`
+    // do the duplicate-prevention work instead of an app-level filter on every read.
+    if (uniqueJobs.length) {
+      const ops = uniqueJobs.map((job) => ({
+        updateOne: {
+          filter: { url: job.url },
+          update: { $set: job, $setOnInsert: { applied: false } },
+          upsert: true,
+        },
+      }));
+      await Job.bulkWrite(ops, { ordered: false });
+    }
+
+    const savedJobs = await Job.find({ url: { $in: uniqueJobs.map((j) => j.url) } }).lean();
+    return savedJobs;
   } catch (err) {
     console.error('Internshala scrape error:', err.message);
     
@@ -223,4 +236,49 @@ async function autoApplyToJobs(userId) {
   }
 }
 
-module.exports = { scrapeInternshalaJobs, autoApplyToJobs };
+/**
+ * Record that a user applied to a job (clicked the real outbound "Apply" link).
+ * Upserts the Job by URL first so this works even for a job the frontend already
+ * has in state but the backend's cache doesn't (e.g. a stale scrape). The unique
+ * {user, job} index on Application makes this idempotent — clicking Apply twice
+ * on the same job is a no-op, not a duplicate row.
+ */
+async function recordApplication(userId, { jobId, url, title, company, location } = {}) {
+  let job = jobId ? await Job.findById(jobId) : null;
+
+  if (!job && url) {
+    job = await Job.findOneAndUpdate(
+      { url },
+      { $set: { title, company, location }, $setOnInsert: { applied: false } },
+      { upsert: true, new: true }
+    );
+  }
+
+  if (!job) {
+    const err = new Error('Job not found — pass a jobId or url');
+    err.status = 400;
+    throw err;
+  }
+
+  const application = await Application.findOneAndUpdate(
+    { user: userId, job: job._id },
+    { $setOnInsert: { title: job.title, company: job.company, url: job.url, appliedAt: new Date() } },
+    { upsert: true, new: true }
+  );
+
+  return application;
+}
+
+/**
+ * Paginated, indexed read of one user's application history — backed by the
+ * {user, appliedAt} compound index, so this is an index scan, not a collection scan.
+ */
+async function getApplications(userId, { limit = 20, skip = 0 } = {}) {
+  const [applications, total] = await Promise.all([
+    Application.find({ user: userId }).sort({ appliedAt: -1 }).skip(skip).limit(limit).lean(),
+    Application.countDocuments({ user: userId }),
+  ]);
+  return { applications, total };
+}
+
+module.exports = { scrapeInternshalaJobs, autoApplyToJobs, recordApplication, getApplications };

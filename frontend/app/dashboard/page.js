@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/ui/empty-state';
 import { PageSkeleton } from '@/components/ui/skeleton';
 import { useUserId } from '@/hooks/useUserId';
 import { api, getErrorMessage } from '@/lib/api';
-import { Search, Building2, MapPin, ExternalLink, RefreshCw, Loader2 } from 'lucide-react';
+import { Search, Building2, MapPin, ExternalLink, RefreshCw, Loader2, CheckCircle2 } from 'lucide-react';
 
 export default function DashboardPage() {
   const { userId, loading: userLoading, session } = useUserId();
@@ -19,6 +19,33 @@ export default function DashboardPage() {
   const [domain, setDomain] = useState('web-development');
   const [error, setError] = useState(null);
   const [previewJob, setPreviewJob] = useState(null);
+  const [appliedUrls, setAppliedUrls] = useState(new Set());
+  const [applicationCount, setApplicationCount] = useState(0);
+
+  const loadApplications = useCallback(async () => {
+    try {
+      const res = await api.get('/api/jobs/applications?limit=100');
+      setAppliedUrls(new Set((res.data.applications || []).map((a) => a.url)));
+      setApplicationCount(res.data.total || 0);
+    } catch {
+      // Non-critical — application history just won't be pre-marked this load.
+    }
+  }, []);
+
+  const recordApply = useCallback(async (job) => {
+    setAppliedUrls((prev) => new Set(prev).add(job.url));
+    setApplicationCount((prev) => prev + 1);
+    try {
+      await api.post('/api/jobs/apply', {
+        url: job.url,
+        title: job.title,
+        company: job.company,
+        location: job.location,
+      });
+    } catch {
+      // The outbound link already opened; a failed record shouldn't block the user.
+    }
+  }, []);
 
   const fetchJobs = useCallback(async () => {
     try {
@@ -40,8 +67,11 @@ export default function DashboardPage() {
   }, [domain]);
 
   useEffect(() => {
-    if (session) fetchJobs();
-  }, [session, fetchJobs]);
+    if (session) {
+      fetchJobs();
+      loadApplications();
+    }
+  }, [session, fetchJobs, loadApplications]);
 
   if (userLoading) {
     return (
@@ -56,9 +86,16 @@ export default function DashboardPage() {
       title="Job Search"
       description="Discover internships and prepare your application materials."
       actions={
-        <Button variant="outline" asChild>
-          <Link href="/upload">Upload resume</Link>
-        </Button>
+        <div className="flex items-center gap-3">
+          {applicationCount > 0 && (
+            <span className="text-sm text-muted-foreground">
+              <span className="font-medium text-foreground">{applicationCount}</span> applications tracked
+            </span>
+          )}
+          <Button variant="outline" asChild>
+            <Link href="/upload">Upload resume</Link>
+          </Button>
+        </div>
       }
     >
       <div className="space-y-6">
@@ -109,11 +146,17 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex gap-2 shrink-0">
                     <Button variant="outline" size="sm" onClick={() => setPreviewJob(job)}>Preview</Button>
-                    <Button size="sm" asChild>
-                      <a href={job.url} target="_blank" rel="noreferrer">
-                        <ExternalLink className="w-3.5 h-3.5" /> Apply
-                      </a>
-                    </Button>
+                    {appliedUrls.has(job.url) ? (
+                      <Button size="sm" variant="secondary" disabled>
+                        <CheckCircle2 className="w-3.5 h-3.5" /> Applied
+                      </Button>
+                    ) : (
+                      <Button size="sm" asChild onClick={() => recordApply(job)}>
+                        <a href={job.url} target="_blank" rel="noreferrer">
+                          <ExternalLink className="w-3.5 h-3.5" /> Apply
+                        </a>
+                      </Button>
+                    )}
                   </div>
                 </CardContent>
               </Card>

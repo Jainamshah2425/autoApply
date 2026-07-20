@@ -35,7 +35,7 @@
 
 // routes/jobs.js
 const express = require('express');
-const { scrapeInternshalaJobs, autoApplyToJobs } = require('../services/jobService');
+const { scrapeInternshalaJobs, autoApplyToJobs, recordApplication, getApplications } = require('../services/jobService');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
@@ -112,6 +112,29 @@ router.post('/auto-apply', requireAuth, async (req, res) => {
       error: 'Auto-apply failed',
       message: err.message
     });
+  }
+});
+
+// Record a real click on the outbound "Apply" link as an application record.
+router.post('/apply', requireAuth, async (req, res) => {
+  try {
+    const { jobId, url, title, company, location } = req.body;
+    const application = await recordApplication(req.auth.userId, { jobId, url, title, company, location });
+    res.json({ success: true, application });
+  } catch (err) {
+    res.status(err.status || 500).json({ success: false, error: err.message || 'Failed to record application' });
+  }
+});
+
+// Paginated history of the current user's own application records.
+router.get('/applications', requireAuth, async (req, res) => {
+  try {
+    const limit = Math.min(parseInt(req.query.limit, 10) || 20, 100);
+    const skip = Math.max(parseInt(req.query.skip, 10) || 0, 0);
+    const { applications, total } = await getApplications(req.auth.userId, { limit, skip });
+    res.json({ success: true, applications, total });
+  } catch (err) {
+    res.status(500).json({ success: false, error: 'Failed to load applications' });
   }
 });
 

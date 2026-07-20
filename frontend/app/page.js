@@ -11,7 +11,7 @@ const features = [
   {
     icon: Mic,
     title: 'AI Interview',
-    description: 'Practice with per-answer feedback, or simulate live behavioral, technical, and coding interviews.',
+    description: 'Practice with per-answer feedback, or simulate live behavioral and technical interviews.',
     href: '/interview',
   },
   {

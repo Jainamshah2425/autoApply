@@ -5,7 +5,7 @@ const JobSchema = new mongoose.Schema({
   title: String,
   company: String,
   location: String,
-  url: String,
+  url: { type: String, unique: true },
   applied: Boolean,
   createdAt: {
     type: Date,
