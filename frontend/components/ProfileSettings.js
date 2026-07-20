@@ -2,12 +2,13 @@
 import React, { useState } from 'react';
 import { Button } from "@/components/ui/button";
 // Accept both `settings` and `profile` for backward compatibility.
-const ProfileSettings = ({ 
+const ProfileSettings = ({
   settings: settingsProp,
   profile,
   onSettingsUpdate,
   onUpdate,
-  loading = false 
+  onDeleteAccount,
+  loading = false
 }) => {
   const settings = settingsProp || profile || {};
   const saveHandler = onSettingsUpdate || onUpdate || (() => {});
@@ -154,7 +155,7 @@ const ProfileSettings = ({
       <div>
         <h3 className="text-lg font-medium text-destructive mb-3">Danger Zone</h3>
         <div>
-          <Button variant="destructive" className="w-full md:w-auto">
+          <Button variant="destructive" className="w-full md:w-auto" onClick={onDeleteAccount}>
             Delete Account
           </Button>
         </div>

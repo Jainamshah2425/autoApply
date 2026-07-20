@@ -1,12 +1,11 @@
 'use client';
 import React, { useState, useEffect, useCallback } from 'react';
-import { useSession } from 'next-auth/react';
+import { useSession, signOut } from 'next-auth/react';
 import Header from '../../components/header';
-import ProfileStats from '../../components/ProfileStats';
 import ProfileSettings from '../../components/ProfileSettings';
 import { Button } from "@/components/ui/button";
 import { ErrorMessage } from '@/components/ui/error-message';
-import { BarChart3, Trophy, Settings, Construction } from 'lucide-react';
+import { BarChart3, Trophy, Settings, Construction, LogOut, Trash2, AlertTriangle } from 'lucide-react';
 
 import { api } from '@/lib/api';
 
@@ -27,10 +26,11 @@ export default function ProfilePage() {
   const { data: session, status } = useSession();
   const [mounted, setMounted] = useState(false);
   const [userProfile, setUserProfile] = useState(null);
-  const [profileStats, setProfileStats] = useState({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Set mounted state
   useEffect(() => {
@@ -65,49 +65,12 @@ export default function ProfilePage() {
     }
   }, [session?.user?.email]);
 
-  const loadProfileStats = useCallback(async () => {
-    try {
-      if (!userProfile?._id) return;
-      
-      const response = await api.get(`/api/user/stats/${userProfile._id}`);
-      setProfileStats(response.data);
-    } catch (err) {
-      console.error('Failed to load profile stats:', err);
-      setProfileStats({});
-    }
-  }, [userProfile?._id]);
-
   // Load basic user profile once session email is available
   useEffect(() => {
     if (session?.user?.email) {
       loadUserProfile();
     }
   }, [session?.user?.email, loadUserProfile]);
-
-  // Load stats when userProfile is ready
-  useEffect(() => {
-    const fetchData = async () => {
-      if (!userProfile?._id) return;
-      setLoading(true);
-      try {
-        await loadProfileStats();
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchData();
-  }, [userProfile?._id, loadProfileStats]);
-
-  // Auto-refresh data periodically
-  useEffect(() => {
-    if (!userProfile?._id) return;
-
-    const refreshInterval = setInterval(() => {
-      loadProfileStats();
-    }, 2 * 60 * 1000); // Refresh every 2 minutes
-
-    return () => clearInterval(refreshInterval);
-  }, [userProfile?._id, loadProfileStats]);
 
   const updateProfile = async (updatedData) => {
     try {
@@ -119,6 +82,20 @@ export default function ProfilePage() {
       setError('Failed to update profile');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteAccount = async () => {
+    if (!userProfile?._id) return;
+    setDeleting(true);
+    try {
+      await api.delete(`/api/user/${userProfile._id}`);
+      await signOut({ callbackUrl: '/' });
+    } catch (err) {
+      console.error('Failed to delete account:', err);
+      setError('Failed to delete account. Please try again.');
+      setDeleting(false);
+      setConfirmingDelete(false);
     }
   };
 
@@ -315,7 +292,57 @@ export default function ProfilePage() {
         {/* Tab Content */}
         <div className="space-y-8">
           {activeTab === 'overview' && (
-            <ProfileStats stats={profileStats} />
+            <div className="bg-card rounded-xl border border-border p-6 max-w-md">
+              <h2 className="text-xl font-bold text-foreground mb-1">Account</h2>
+              <p className="text-sm text-muted-foreground mb-6">
+                {userProfile?.email || session?.user?.email}
+              </p>
+
+              <div className="space-y-3">
+                <Button
+                  variant="outline"
+                  className="w-full justify-start"
+                  onClick={() => signOut({ callbackUrl: '/' })}
+                >
+                  <LogOut className="w-4 h-4" /> Log out
+                </Button>
+
+                {!confirmingDelete ? (
+                  <Button
+                    variant="destructive"
+                    className="w-full justify-start"
+                    onClick={() => setConfirmingDelete(true)}
+                  >
+                    <Trash2 className="w-4 h-4" /> Delete account
+                  </Button>
+                ) : (
+                  <div className="border border-destructive/50 rounded-lg p-4 space-y-3">
+                    <div className="flex items-start gap-2 text-sm text-destructive">
+                      <AlertTriangle className="w-4 h-4 mt-0.5 shrink-0" />
+                      <span>This permanently deletes your account, resumes, interview history, and application records. This can&apos;t be undone.</span>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={handleDeleteAccount}
+                        disabled={deleting}
+                      >
+                        {deleting ? 'Deleting…' : 'Yes, delete permanently'}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setConfirmingDelete(false)}
+                        disabled={deleting}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
           )}
 
           {activeTab === 'achievements' && (
@@ -334,6 +361,10 @@ export default function ProfilePage() {
             <ProfileSettings
               profile={userProfile}
               onUpdate={updateProfile}
+              onDeleteAccount={() => {
+                setActiveTab('overview');
+                setConfirmingDelete(true);
+              }}
             />
           )}
         </div>

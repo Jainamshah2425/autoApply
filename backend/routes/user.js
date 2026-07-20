@@ -372,6 +372,36 @@ router.post('/seed-sample-data/:userId', requireOwnUserId(), async (req, res) =>
   }
 });
 
+// DELETE /api/user/:userId - permanently delete the account and all owned data
+router.delete('/:userId', requireOwnUserId(), async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const Resume = require('../models/Resume');
+    const InterviewSession = require('../models/InterviewSession');
+    const LiveInterviewSession = require('../models/LiveInterviewSession');
+    const AptitudeAttempt = require('../models/AptitudeAttempt');
+    const Video = require('../models/Video');
+    const Application = require('../models/Application');
+
+    await Promise.all([
+      Resume.deleteMany({ user: userId }),
+      InterviewSession.deleteMany({ user: userId }),
+      LiveInterviewSession.deleteMany({ userId }),
+      AptitudeAttempt.deleteMany({ userId }),
+      Video.deleteMany({ user: userId }),
+      Application.deleteMany({ user: userId }),
+    ]);
+
+    await User.findByIdAndDelete(userId);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Error deleting account:', error);
+    res.status(500).json({ error: 'Failed to delete account' });
+  }
+});
+
 // Sync user stats from interview sessions and video analysis
 router.post('/sync-stats/:userId', requireOwnUserId(), async (req, res) => {
   try {
