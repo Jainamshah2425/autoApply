@@ -44,6 +44,15 @@ app.use(cors({
 }));
 app.use(express.json());
 
+// DB-dependent routes fail fast with a clear 503 instead of hanging/erroring
+// cryptically while Mongo is still connecting or is down.
+app.use((req, res, next) => {
+  if (mongoose.connection.readyState !== 1) {
+    return res.status(503).json({ error: 'Database not ready' });
+  }
+  next();
+});
+
 const llmRoutes = require('./routes/llm.js');
 const userRoutes = require('./routes/user.js');
 const jobRoutes = require('./routes/jobs.js');
@@ -87,10 +96,35 @@ app.listen(PORT, () => {
 });
 
 // Connect to MongoDB
+mongoose.connection.on('error', (err) => {
+  console.error('❌ MongoDB connection error:', err.message);
+});
+mongoose.connection.on('disconnected', () => {
+  console.warn('⚠️  MongoDB disconnected');
+});
+mongoose.connection.on('reconnected', () => {
+  console.log('✅ MongoDB reconnected');
+});
+
+async function shutdown(signal) {
+  console.log(`${signal} received, closing MongoDB connection...`);
+  try {
+    await mongoose.disconnect();
+  } finally {
+    process.exit(0);
+  }
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));
+
 if (process.env.MONGODB_URI) {
   mongoose
     .connect(process.env.MONGODB_URI, {
       serverSelectionTimeoutMS: 10000,
+      maxPoolSize: 10,
+      socketTimeoutMS: 45000,
+      connectTimeoutMS: 10000,
+      retryWrites: true,
     })
     .then(async () => {
       console.log('✅ MongoDB connected');

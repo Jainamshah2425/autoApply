@@ -54,6 +54,9 @@ router.post('/respond', liveInterviewRateLimiter, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error processing response:', error);
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
     if (error.message === 'Session not found') {
       return res.status(404).json({ error: 'Session not found' });
     }
@@ -110,6 +113,9 @@ router.post('/end', liveInterviewRateLimiter, async (req, res) => {
     res.json({ success: true, ...result });
   } catch (error) {
     console.error('Error ending session:', error);
+    if (error.status) {
+      return res.status(error.status).json({ error: error.message });
+    }
     res.status(500).json({ error: error.message || 'Failed to end session' });
   }
 });

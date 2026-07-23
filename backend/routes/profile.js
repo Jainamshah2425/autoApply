@@ -1,8 +1,11 @@
 const express = require('express');
 const router = express.Router();
+const mongoose = require('mongoose');
 const User = require('../models/User');
 const InterviewSession = require('../models/InterviewSession');
 const { requireAuth, requireOwnUserId } = require('../middleware/auth');
+const { getCanonicalStats } = require('../services/userStatsService');
+const { getReadiness } = require('../services/readinessService');
 
 router.use(requireAuth);
 
@@ -54,12 +57,19 @@ router.get('/profile/:userId', requireOwnUserId(), async (req, res) => {
 router.put('/profile/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
-    const updates = req.body;
 
-    // Remove sensitive fields that shouldn't be updated directly
-    delete updates.password;
-    delete updates._id;
-    delete updates.createdAt;
+    // Explicit allowlist (matches routes/user.js's PUT /profile/:userId) —
+    // req.body must never be written to the User doc wholesale, since that
+    // would let a client set password/stats/contributions/settings/etc.
+    const ALLOWED_PROFILE_FIELDS = [
+      'fullName', 'username', 'bio', 'location', 'website',
+      'professionalBackground', 'profilePicture', 'phone',
+      'linkedIn', 'github', 'currentTitle', 'company'
+    ];
+    const updates = {};
+    for (const key of ALLOWED_PROFILE_FIELDS) {
+      if (req.body[key] !== undefined) updates[key] = req.body[key];
+    }
 
     const user = await User.findByIdAndUpdate(
       userId,
@@ -101,11 +111,11 @@ router.put('/settings/:userId', requireOwnUserId(), async (req, res) => {
 
     const user = await User.findByIdAndUpdate(
       userId,
-      { 
+      {
         settings,
         updatedAt: new Date()
       },
-      { new: true }
+      { new: true, runValidators: true }
     ).select('settings');
 
     if (!user) {
@@ -119,126 +129,60 @@ router.put('/settings/:userId', requireOwnUserId(), async (req, res) => {
   }
 });
 
-// Helper function to calculate user statistics
+// Helper function to calculate user statistics — single source of truth via
+// userStatsService.getCanonicalStats (fixes a live bug: this used to average
+// InterviewSession.overallScore, a schema field that's never written anywhere
+// in the codebase, so averageScore/improvementRate here always silently
+// reported 0 regardless of how well the user actually did).
 async function getUserStats(userId) {
+  const canonical = await getCanonicalStats(userId);
+
+  // Favorite topics and weekly progress aren't part of the cross-feature
+  // score consolidation — keep them as small, targeted queries here.
+  const weekStart = new Date();
+  weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+  weekStart.setHours(0, 0, 0, 0);
+
+  const [topicAgg, weeklyProgress] = await Promise.all([
+    InterviewSession.aggregate([
+      { $match: { user: new mongoose.Types.ObjectId(userId), topic: { $exists: true, $ne: null } } },
+      { $group: { _id: '$topic', count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 }
+    ]),
+    InterviewSession.countDocuments({ user: userId, createdAt: { $gte: weekStart } })
+  ]);
+
+  const favoriteTopics = topicAgg.map(t => ({ name: t._id, count: t.count }));
+
+  const experiencePoints = canonical.interview.totalSessions * 100 + canonical.interview.totalQuestions * 10;
+  const level = Math.floor(experiencePoints / 1000) + 1;
+
+  return {
+    totalInterviews: canonical.interview.totalSessions,
+    totalQuestions: canonical.interview.totalQuestions,
+    averageScore: canonical.interview.averageScore ? Math.round(canonical.interview.averageScore) : 0,
+    improvementRate: 0, // trend-over-time tracking is a separate concern from this consolidation
+    favoriteTopics,
+    currentStreak: canonical.combined.currentStreak,
+    level,
+    experiencePoints,
+    nextLevelPoints: level * 1000,
+    weeklyGoal: 5,
+    weeklyProgress,
+    recentAchievements: [] // TODO: Implement achievements system
+  };
+}
+
+// Composite readiness score across aptitude, interview, and resume-skill coverage.
+router.get('/readiness/:userId', requireOwnUserId(), async (req, res) => {
   try {
-    const [
-      totalInterviews,
-      interviewSessions,
-    ] = await Promise.all([
-      InterviewSession.countDocuments({ userId }),
-      InterviewSession.find({ userId }).sort({ createdAt: -1 }).limit(50),
-    ]);
-
-    // Calculate total questions from interview sessions
-    const totalQuestions = interviewSessions.reduce((sum, session) => {
-      return sum + (session.questions?.length || 0);
-    }, 0);
-
-    // Calculate average scores from interview sessions
-    const scoresWithValues = interviewSessions.filter(session => 
-      session.overallScore && typeof session.overallScore === 'number'
-    );
-    const averageScore = scoresWithValues.length > 0
-      ? Math.round(scoresWithValues.reduce((sum, session) => sum + session.overallScore, 0) / scoresWithValues.length)
-      : 0;
-
-    // Calculate improvement rate from session scores
-    let improvementRate = 0;
-    if (scoresWithValues.length >= 2) {
-      const first = scoresWithValues[scoresWithValues.length - 1].overallScore;
-      const last = scoresWithValues[0].overallScore;
-      if (first > 0) {
-        improvementRate = Math.round(((last - first) / first) * 100);
-      }
-    }
-
-    const experiencePoints = totalInterviews * 100 + totalQuestions * 10;
-    // Get favorite topics
-    const topicCounts = {};
-    interviewSessions.forEach(session => {
-      if (session.topic) {
-        topicCounts[session.topic] = (topicCounts[session.topic] || 0) + 1;
-      }
-    });
-    
-    const favoriteTopics = Object.entries(topicCounts)
-      .sort(([,a], [,b]) => b - a)
-      .slice(0, 5)
-      .map(([name, count]) => ({ name, count }));
-
-    const currentStreak = calculateCurrentStreak(interviewSessions);
-    const level = Math.floor(experiencePoints / 1000) + 1;
-    const nextLevelPoints = level * 1000;
-
-    // Weekly progress
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    weekStart.setHours(0, 0, 0, 0);
-    
-    const weeklyProgress = await InterviewSession.countDocuments({
-      userId,
-      createdAt: { $gte: weekStart }
-    });
-
-    const weeklyGoal = 5; // Default weekly goal
-
-    return {
-      totalInterviews,
-      totalQuestions,
-      averageScore,
-      improvementRate,
-      favoriteTopics,
-      currentStreak,
-      level,
-      experiencePoints,
-      nextLevelPoints,
-      weeklyGoal,
-      weeklyProgress,
-      recentAchievements: [] // TODO: Implement achievements system
-    };
+    const readiness = await getReadiness(req.params.userId);
+    res.json({ success: true, readiness });
   } catch (error) {
-    console.error('Error calculating user stats:', error);
-    return {};
+    console.error('Error computing readiness:', error);
+    res.status(500).json({ error: 'Failed to compute readiness score' });
   }
-}
-
-// Helper function to calculate current streak
-function calculateCurrentStreak(interviewSessions) {
-  if (!interviewSessions.length) return 0;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  
-  let currentStreak = 0;
-  let checkDate = new Date(today);
-
-  // Get unique days with interviews
-  const interviewDays = new Set(
-    interviewSessions.map(session => {
-      const date = new Date(session.createdAt);
-      date.setHours(0, 0, 0, 0);
-      return date.getTime();
-    })
-  );
-
-  // Check backwards from today
-  while (true) {
-    if (interviewDays.has(checkDate.getTime())) {
-      currentStreak++;
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else if (currentStreak > 0 || checkDate.getTime() === today.getTime()) {
-      // If we have a streak and hit a gap, or if today has no interviews, break
-      if (checkDate.getTime() !== today.getTime()) {
-        break;
-      }
-      checkDate.setDate(checkDate.getDate() - 1);
-    } else {
-      break;
-    }
-  }
-
-  return currentStreak;
-}
+});
 
 module.exports = router;

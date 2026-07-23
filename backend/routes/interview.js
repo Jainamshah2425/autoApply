@@ -95,24 +95,35 @@ router.post('/complete-session', async (req, res) => {
 
     const result = await completeSession(sessionId, userId, questionTimings);
 
+    // Idempotency guard: two independent writes (session completion, then
+    // heatmap activity) with no shared transaction, so a retry after a
+    // partial failure must not double-record the activity.
+    const InterviewSession = require('../models/InterviewSession');
+    const sessionForHeatmap = await InterviewSession.findOne({ sessionId }).select('heatmapRecorded');
+
     let heatmapUpdateResult = null;
-    try {
-      const HeatmapService = require('../services/heatmapService');
-      const activityDetails = {
-        description: `Completed mock interview session (${result.insights?.metrics?.totalQuestions || 0} questions)`,
-        metadata: {
-          sessionId,
-          questionsAnswered: result.insights?.metrics?.completedQuestions || 0,
-          totalQuestions: result.insights?.metrics?.totalQuestions || 0,
-          averageScore: result.insights?.metrics?.averageScore || 0,
-          duration: result.insights?.metrics?.totalDuration || 0,
-          completionRate: result.insights?.metrics?.completionRate || 0
-        }
-      };
-      heatmapUpdateResult = await HeatmapService.addActivity(userId, 'interview_completed', activityDetails);
-    } catch (trackingError) {
-      console.error('Heatmap tracking failed:', trackingError);
-      heatmapUpdateResult = { success: false, error: trackingError.message };
+    if (sessionForHeatmap && !sessionForHeatmap.heatmapRecorded) {
+      try {
+        const HeatmapService = require('../services/heatmapService');
+        const activityDetails = {
+          description: `Completed mock interview session (${result.insights?.metrics?.totalQuestions || 0} questions)`,
+          metadata: {
+            sessionId,
+            questionsAnswered: result.insights?.metrics?.completedQuestions || 0,
+            totalQuestions: result.insights?.metrics?.totalQuestions || 0,
+            averageScore: result.insights?.metrics?.averageScore || 0,
+            duration: result.insights?.metrics?.totalDuration || 0,
+            completionRate: result.insights?.metrics?.completionRate || 0
+          }
+        };
+        heatmapUpdateResult = await HeatmapService.addActivity(userId, 'interview_completed', activityDetails);
+        await InterviewSession.updateOne({ sessionId }, { $set: { heatmapRecorded: true } });
+      } catch (trackingError) {
+        console.error('Heatmap tracking failed:', trackingError);
+        heatmapUpdateResult = { success: false, error: trackingError.message };
+      }
+    } else if (sessionForHeatmap) {
+      heatmapUpdateResult = { success: true, alreadyRecorded: true };
     }
 
     res.json({
@@ -160,18 +171,21 @@ router.get('/session/:sessionId', async (req, res) => {
 router.get('/sessions/user/:userId', requireOwnUserId(), async (req, res) => {
   try {
     const { userId } = req.params;
-    const { page = 1, limit = 10, status } = req.query;
+    const { page: rawPage = 1, limit: rawLimit = 10, status } = req.query;
     const InterviewSession = require('../models/InterviewSession');
+
+    const page = Math.max(parseInt(rawPage, 10) || 1, 1);
+    const limit = Math.min(Math.max(parseInt(rawLimit, 10) || 10, 1), 100);
 
     const query = { user: userId };
     if (status) query.status = status;
 
-    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const skip = (page - 1) * limit;
     const [sessions, total] = await Promise.all([
       InterviewSession.find(query)
         .sort({ createdAt: -1 })
         .skip(skip)
-        .limit(parseInt(limit))
+        .limit(limit)
         .select('sessionId jobDescription questions responses sessionMetrics status insights createdAt completedAt'),
       InterviewSession.countDocuments(query)
     ]);
@@ -180,10 +194,10 @@ router.get('/sessions/user/:userId', requireOwnUserId(), async (req, res) => {
       success: true,
       sessions,
       pagination: {
-        page: parseInt(page),
-        limit: parseInt(limit),
+        page,
+        limit,
         total,
-        pages: Math.ceil(total / parseInt(limit))
+        pages: Math.ceil(total / limit)
       },
       message: 'Sessions retrieved successfully'
     });
@@ -223,36 +237,20 @@ router.delete('/session/:sessionId', async (req, res) => {
 
 router.get('/stats/user/:userId', requireOwnUserId(), async (req, res) => {
   try {
-    const InterviewSession = require('../models/InterviewSession');
-    const mongoose = require('mongoose');
+    const { getCanonicalStats } = require('../services/userStatsService');
+    const canonical = await getCanonicalStats(req.params.userId);
 
-    const stats = await InterviewSession.aggregate([
-      { $match: { user: new mongoose.Types.ObjectId(req.params.userId) } },
-      {
-        $group: {
-          _id: null,
-          totalSessions: { $sum: 1 },
-          completedSessions: { $sum: { $cond: [{ $eq: ['$status', 'completed'] }, 1, 0] } },
-          averageScore: { $avg: '$sessionMetrics.averageScore' },
-          totalQuestions: { $sum: { $size: '$questions' } },
-          totalResponses: { $sum: { $size: '$responses' } }
-        }
-      }
-    ]);
-
-    const userStats = stats[0] || {
-      totalSessions: 0,
-      completedSessions: 0,
-      averageScore: 0,
-      totalQuestions: 0,
-      totalResponses: 0
+    // Keep this endpoint's historical response shape (just the interview slice).
+    const stats = {
+      totalSessions: canonical.interview.totalSessions,
+      completedSessions: canonical.interview.completedSessions,
+      averageScore: canonical.interview.averageScore ?? 0,
+      totalQuestions: canonical.interview.totalQuestions,
+      totalResponses: canonical.interview.totalResponses,
+      completionRate: canonical.interview.completionRate
     };
 
-    userStats.completionRate = userStats.totalSessions > 0
-      ? (userStats.completedSessions / userStats.totalSessions) * 100
-      : 0;
-
-    res.json({ success: true, stats: userStats, message: 'Statistics retrieved successfully' });
+    res.json({ success: true, stats, message: 'Statistics retrieved successfully' });
   } catch (error) {
     console.error('Error in /stats/user/:userId:', error);
     res.status(500).json({

@@ -118,7 +118,11 @@ const UserSchema = new mongoose.Schema({
     }]
   }]
 }, {
-  timestamps: true
+  timestamps: true,
+  // Concurrent requests read-modify-write this doc a lot (contributions,
+  // stats). Without this, save() writes blindly and the loser of a race
+  // silently overwrites the winner's changes instead of failing loudly.
+  optimisticConcurrency: true
 });
 
 module.exports = mongoose.model('User', UserSchema);

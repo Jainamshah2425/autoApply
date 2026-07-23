@@ -4,6 +4,7 @@
 const AptitudeQuestion = require('../models/AptitudeQuestion.js');
 const AptitudeAttempt = require('../models/AptitudeAttempt.js');
 const { getLLMResponse } = require('./llm.js');
+const { computeTopicQuotas, mergeQuotaResults } = require('./aptitudeSelection.js');
 
 // ─── Topic definitions for LLM generation ─────────────────────
 const TOPIC_MAP = {
@@ -97,9 +98,22 @@ Return ONLY the JSON array. No markdown, no code blocks, no extra text.`;
         _isDynamic: true  // flag to identify LLM-generated questions
       }));
   } catch (err) {
-    console.error('Dynamic question generation failed:', err.message);
+    console.error(
+      `Dynamic question generation failed [category=${category}, topic=${topic}, count=${count}]:`,
+      err.message,
+      err.stack
+    );
     return []; // fallback to static bank
   }
+}
+
+/**
+ * Strip the internal _isDynamic flag and persist LLM-generated questions.
+ * Shared by generateTest (both branches) and refreshQuestionBank.
+ */
+async function saveDynamicQuestions(dynamicQuestions) {
+  const docs = dynamicQuestions.map(({ _isDynamic, ...rest }) => rest);
+  return AptitudeQuestion.insertMany(docs);
 }
 
 /**
@@ -146,20 +160,16 @@ async function generateTest(userId, options = {}) {
 
   // Step 2: If we have enough dynamic questions, save them to DB and use them
   let questions = [];
+  const degraded = dynamicQuestions.length === 0;
 
   if (dynamicQuestions.length >= questionCount) {
     // Save dynamic questions to DB for persistence and future re-use
-    const savedDocs = await AptitudeQuestion.insertMany(
-      dynamicQuestions.map(q => {
-        const { _isDynamic, ...rest } = q;
-        return rest;
-      })
-    );
+    const savedDocs = await saveDynamicQuestions(dynamicQuestions);
     questions = savedDocs.map(doc => doc.toObject());
     console.log(`💾 Saved ${savedDocs.length} new questions to DB`);
 
   } else {
-    // Step 3: Supplement with unseen static questions
+    // Step 3: Supplement with unseen static questions, weighted toward weak topics
     const seenIds = await getSeenQuestionIds(userId);
     const seenObjectIds = seenIds.map(id => {
       try { return new (require('mongoose').Types.ObjectId)(id); } catch { return null; }
@@ -171,13 +181,38 @@ async function generateTest(userId, options = {}) {
     if (difficulty) filter.difficulty = difficulty;
     if (seenObjectIds.length > 0) filter._id = { $nin: seenObjectIds };
 
-    // Get unseen questions from static bank
-    const staticQuestions = await AptitudeQuestion.aggregate([
-      { $match: filter },
-      { $sample: { size: questionCount - dynamicQuestions.length } }
-    ]);
+    const remaining = questionCount - dynamicQuestions.length;
 
-    // If still not enough (user has seen everything), reset and allow re-use
+    // Bias toward the user's weak topics (from past attempts) when the caller
+    // hasn't already pinned a single topic themselves.
+    const weakTopics = topic ? [] : await getWeakTopics(userId);
+    const { weakQuota, otherQuota } = computeTopicQuotas({ questionCount: remaining, weakTopics });
+
+    let staticQuestions;
+    if (weakQuota > 0) {
+      const [weakPoolQuestions, otherPoolQuestions] = await Promise.all([
+        AptitudeQuestion.aggregate([
+          { $match: { ...filter, topic: { $in: weakTopics } } },
+          { $sample: { size: weakQuota } }
+        ]),
+        AptitudeQuestion.aggregate([
+          { $match: { ...filter, topic: { $nin: weakTopics } } },
+          { $sample: { size: otherQuota } }
+        ])
+      ]);
+      staticQuestions = mergeQuotaResults({ weakPoolQuestions, otherPoolQuestions, questionCount: remaining });
+      if (weakPoolQuestions.length > 0) {
+        console.log(`🎯 Weak-topic bias: ${weakPoolQuestions.length}/${remaining} questions from ${weakTopics.join(', ')}`);
+      }
+    } else {
+      // Get unseen questions from static bank
+      staticQuestions = await AptitudeQuestion.aggregate([
+        { $match: filter },
+        { $sample: { size: remaining } }
+      ]);
+    }
+
+    // If still not enough (user has seen everything, or weak-topic pool was thin), reset and allow re-use
     if (staticQuestions.length + dynamicQuestions.length < questionCount) {
       console.log('User has seen most questions — allowing some repeats');
       const { _id, ...filterWithoutId } = filter;
@@ -190,9 +225,7 @@ async function generateTest(userId, options = {}) {
 
     // If we got dynamic questions, save them to DB first
     if (dynamicQuestions.length > 0) {
-      const savedDynamic = await AptitudeQuestion.insertMany(
-        dynamicQuestions.map(q => { const { _isDynamic, ...rest } = q; return rest; })
-      );
+      const savedDynamic = await saveDynamicQuestions(dynamicQuestions);
       questions = [...savedDynamic.map(d => d.toObject()), ...staticQuestions];
     } else {
       questions = staticQuestions;
@@ -236,6 +269,7 @@ async function generateTest(userId, options = {}) {
     testType,
     timeLimitMinutes,
     totalQuestions: questions.length,
+    degraded, // true when LLM generation failed and we fell back to the static bank
     questions: questions.map(q => ({
       _id: q._id,
       questionText: q.questionText,
@@ -264,6 +298,7 @@ async function submitTest(attemptId, answers) {
 
   let correctCount = 0;
   const topicStats = {};
+  const questionStatOps = [];
 
   // Process each answer
   for (const q of attempt.questions) {
@@ -279,13 +314,17 @@ async function submitTest(attemptId, answers) {
       q.timeSpentSeconds = answer.timeSpentSeconds || 0;
       q.skipped = false;
 
-      // Update question stats
-      question.timesAttempted = (question.timesAttempted || 0) + 1;
-      if (q.isCorrect) {
-        question.timesCorrect = (question.timesCorrect || 0) + 1;
-        correctCount++;
-      }
-      await question.save();
+      if (q.isCorrect) correctCount++;
+
+      // Question docs are shared across every user's attempts — use an atomic
+      // $inc via bulkWrite instead of read-modify-write save() per question,
+      // which would lose increments under concurrent submissions.
+      questionStatOps.push({
+        updateOne: {
+          filter: { _id: question._id },
+          update: { $inc: { timesAttempted: 1, timesCorrect: q.isCorrect ? 1 : 0 } }
+        }
+      });
     }
 
     // Topic breakdown
@@ -293,6 +332,10 @@ async function submitTest(attemptId, answers) {
     if (!topicStats[topic]) topicStats[topic] = { correct: 0, total: 0 };
     topicStats[topic].total++;
     if (q.isCorrect) topicStats[topic].correct++;
+  }
+
+  if (questionStatOps.length > 0) {
+    await AptitudeQuestion.bulkWrite(questionStatOps);
   }
 
   // Calculate metrics
@@ -380,7 +423,7 @@ async function getUserAnalytics(userId) {
   const attempts = await AptitudeAttempt.find({
     userId,
     status: 'completed'
-  }).sort({ completedAt: -1 });
+  }).sort({ completedAt: -1 }).limit(50);
 
   if (attempts.length === 0) {
     return { totalTests: 0, averageScore: 0, topicBreakdown: [], recentScores: [], weakTopics: [] };
@@ -461,13 +504,9 @@ async function refreshQuestionBank(options = {}) {
         errors.push(`${category}: LLM returned no questions`);
         continue;
       }
-      const docs = batch.map((q) => {
-        const { _isDynamic, ...rest } = q;
-        return rest;
-      });
-      await AptitudeQuestion.insertMany(docs);
-      added[category] = docs.length;
-      console.log(`📚 Aptitude refresh: +${docs.length} ${category} questions`);
+      const savedDocs = await saveDynamicQuestions(batch);
+      added[category] = savedDocs.length;
+      console.log(`📚 Aptitude refresh: +${savedDocs.length} ${category} questions`);
     } catch (err) {
       errors.push(`${category}: ${err.message}`);
       console.error(`Aptitude refresh failed for ${category}:`, err.message);

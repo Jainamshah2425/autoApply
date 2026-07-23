@@ -77,7 +77,18 @@ const liveInterviewSessionSchema = new mongoose.Schema({
     default: 'active'
   },
   startedAt: { type: Date, default: Date.now },
-  completedAt: Date
+  completedAt: Date,
+
+  // Pessimistic claim/release lock — respondToAnswer/endSession do a
+  // findOne → mutate in JS → save() on this doc, and an LLM call sits in
+  // between the read and the write, so optimistic retry would mean
+  // re-calling the LLM on conflict. A short-lived lock avoids that.
+  locked: { type: Boolean, default: false },
+  lockedAt: Date,
+
+  // Set once the completed session's activity has been recorded in the
+  // user's heatmap, so a retry after a partial failure doesn't double-count.
+  heatmapRecorded: { type: Boolean, default: false }
 }, {
   timestamps: true
 });

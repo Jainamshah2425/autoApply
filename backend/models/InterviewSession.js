@@ -70,6 +70,12 @@ const interviewSessionSchema = new mongoose.Schema({
   createdAt: {
     type: Date,
     default: Date.now
+  },
+  // Set once completion's activity has been recorded in the user's heatmap,
+  // so a retry after a partial failure doesn't double-count the activity.
+  heatmapRecorded: {
+    type: Boolean,
+    default: false
   }
 });
 

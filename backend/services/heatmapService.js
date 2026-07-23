@@ -1,5 +1,6 @@
 const User = require('../models/User');
 const mongoose = require('mongoose');
+const { withRetry } = require('../utils/withRetry');
 
 /**
  * Service for efficiently managing heatmap and activity tracking
@@ -12,14 +13,8 @@ class HeatmapService {
   static async addActivity(userId, activityType, details = {}) {
     try {
       const userObjectId = typeof userId === 'string' ? new mongoose.Types.ObjectId(userId) : userId;
-      const user = await User.findById(userObjectId);
-      
-      if (!user) {
-        throw new Error(`User ${userId} not found`);
-      }
-
       const today = new Date().toISOString().split('T')[0];
-      
+
       // Create activity object
       const activity = {
         type: activityType,
@@ -28,38 +23,52 @@ class HeatmapService {
         metadata: details.metadata || {}
       };
 
-      // Find or create today's contribution
-      const existingContributionIndex = user.contributions.findIndex(c => c.date === today);
-      
-      if (existingContributionIndex >= 0) {
-        user.contributions[existingContributionIndex].count += 1;
-        user.contributions[existingContributionIndex].activities.push(activity);
-      } else {
-        user.contributions.push({
-          date: today,
-          count: 1,
-          activities: [activity]
-        });
-      }
+      let newContribution = false;
 
-      // Update stats based on activity type
-      await this.updateStatsForActivity(user, activityType, details);
-      
-      // Update streaks
-      await this.updateStreaks(user, today, existingContributionIndex === -1);
-      
-      await user.save();
-      
+      // Re-fetches the user fresh on every attempt so a retry (triggered by a
+      // concurrent request winning the race) applies these mutations on top
+      // of the latest state instead of a stale doc — see models/User.js's
+      // optimisticConcurrency option.
+      await withRetry(async () => {
+        const user = await User.findById(userObjectId);
+        if (!user) {
+          throw new Error(`User ${userId} not found`);
+        }
+
+        // Find or create today's contribution
+        const existingContributionIndex = user.contributions.findIndex(c => c.date === today);
+        newContribution = existingContributionIndex === -1;
+
+        if (existingContributionIndex >= 0) {
+          user.contributions[existingContributionIndex].count += 1;
+          user.contributions[existingContributionIndex].activities.push(activity);
+        } else {
+          user.contributions.push({
+            date: today,
+            count: 1,
+            activities: [activity]
+          });
+        }
+
+        // Update stats based on activity type
+        await this.updateStatsForActivity(user, activityType, details);
+
+        // Update streaks
+        await this.updateStreaks(user, today, newContribution);
+
+        await user.save();
+      });
+
       console.log(`✅ Activity "${activityType}" added to heatmap for user ${userId}`);
-      
+
       return {
         success: true,
         contributionAdded: true,
-        newContribution: existingContributionIndex === -1,
+        newContribution,
         date: today,
         activity: activity
       };
-      
+
     } catch (error) {
       console.error('❌ Failed to add activity to heatmap:', error);
       throw error;

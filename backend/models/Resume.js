@@ -20,4 +20,13 @@ const resumeSchema = new mongoose.Schema({
   },
 });
 
+const MAX_RESUME_BYTES = 8 * 1024 * 1024; // 8MB — matches the multer upload cap
+
+resumeSchema.pre('validate', function (next) {
+  if (this.pdf && this.pdf.length > MAX_RESUME_BYTES) {
+    return next(new Error('Resume PDF exceeds maximum allowed size'));
+  }
+  next();
+});
+
 module.exports = mongoose.model('Resume', resumeSchema);

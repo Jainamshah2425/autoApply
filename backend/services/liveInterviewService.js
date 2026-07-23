@@ -3,13 +3,20 @@
 // generates follow-ups, and produces session summaries.
 
 const { v4: uuidv4 } = require('uuid');
+const mongoose = require('mongoose');
 const { getLLMResponse } = require('./llm.js');
 const LiveInterviewSession = require('../models/LiveInterviewSession.js');
 const Resume = require('../models/Resume.js');
 
+function weakestCategoryLine(weakestCategory) {
+  return weakestCategory
+    ? `\n- This candidate's rolling average across recent sessions is weakest in "${weakestCategory}" — weight your questions to probe that area more than the others.`
+    : '';
+}
+
 // ─── System Prompts ───────────────────────────────────────────────
 const SYSTEM_PROMPTS = {
-  behavioral: (jd, resume) => `You are a senior HR interviewer conducting a live mock interview.
+  behavioral: (jd, resume, weakestCategory) => `You are a senior HR interviewer conducting a live mock interview.
 
 JOB DESCRIPTION:
 ${jd}
@@ -17,7 +24,7 @@ ${jd}
 CANDIDATE RESUME:
 ${resume || 'Not provided'}
 
-RULES:
+RULES:${weakestCategoryLine(weakestCategory)}
 - Ask ONE question at a time
 - TURN-TAKING (CRITICAL): This is a LIVE interview. Wait for the candidate to answer before asking the next question.
 - NEVER invent, assume, or simulate the candidate's answers
@@ -39,7 +46,7 @@ RULES:
   "questionNumber": 1
 }`,
 
-  technical: (jd, resume) => `You are a senior technical interviewer conducting a live mock interview.
+  technical: (jd, resume, weakestCategory) => `You are a senior technical interviewer conducting a live mock interview.
 
 JOB DESCRIPTION:
 ${jd}
@@ -47,7 +54,7 @@ ${jd}
 CANDIDATE RESUME:
 ${resume || 'Not provided'}
 
-RULES:
+RULES:${weakestCategoryLine(weakestCategory)}
 - Ask ONE question at a time
 - TURN-TAKING (CRITICAL): Wait for the candidate to answer before your next question. Never invent their answers.
 - Each turn: acknowledge their previous answer briefly, then ask at most ONE follow-up or new question
@@ -67,7 +74,7 @@ RULES:
   "questionNumber": 1
 }`,
 
-  coding: (jd, resume) => `You are a senior technical interviewer conducting a live coding interview.
+  coding: (jd, resume, weakestCategory) => `You are a senior technical interviewer conducting a live coding interview.
 
 JOB DESCRIPTION:
 ${jd}
@@ -75,7 +82,7 @@ ${jd}
 CANDIDATE RESUME:
 ${resume || 'Not provided'}
 
-RULES:
+RULES:${weakestCategoryLine(weakestCategory)}
 - Present ONE coding problem at a time
 - TURN-TAKING (CRITICAL): Wait for the candidate to respond or submit code before continuing. Never invent their answers.
 - After presenting a problem, STOP and wait — do not ask the next problem until they respond
@@ -159,6 +166,40 @@ function parseAiContent(content) {
   }
 }
 
+// ─── Rolling category-score bias (deterministic, no ML) ──────────
+// Averages a user's last N completed sessions' categoryScores. The decision
+// of which category to emphasize is a plain aggregation + sort — the LLM
+// only ever receives the resulting category name as a prompt instruction,
+// it never decides which category is weakest itself.
+async function getRollingCategoryScores(userId, { limit = 10 } = {}) {
+  const sessions = await LiveInterviewSession.aggregate([
+    { $match: { userId: new mongoose.Types.ObjectId(userId), status: 'completed' } },
+    { $sort: { completedAt: -1 } },
+    { $limit: limit },
+    {
+      $group: {
+        _id: null,
+        communication: { $avg: '$metrics.categoryScores.communication' },
+        technical: { $avg: '$metrics.categoryScores.technical' },
+        problemSolving: { $avg: '$metrics.categoryScores.problemSolving' },
+        confidence: { $avg: '$metrics.categoryScores.confidence' },
+        sampleSize: { $sum: 1 }
+      }
+    }
+  ]);
+  return sessions[0] || null;
+}
+
+// Pure — no DB access, trivially unit-testable.
+function pickWeakestCategory(categoryScores) {
+  if (!categoryScores) return null;
+  const { sampleSize, _id, ...scores } = categoryScores;
+  const entries = Object.entries(scores).filter(([, v]) => typeof v === 'number');
+  if (!entries.length) return null;
+  entries.sort((a, b) => a[1] - b[1] || a[0].localeCompare(b[0]));
+  return entries[0][0];
+}
+
 // ─── Start Session ────────────────────────────────────────────────
 async function startSession(userId, jobDescription, mode) {
   // Fetch user resume for context
@@ -170,8 +211,16 @@ async function startSession(userId, jobDescription, mode) {
     console.warn('Could not fetch resume:', err.message);
   }
 
+  let weakestCategory = null;
+  try {
+    const rolling = await getRollingCategoryScores(userId);
+    weakestCategory = pickWeakestCategory(rolling);
+  } catch (err) {
+    console.warn('Could not compute rolling category scores:', err.message);
+  }
+
   const sessionId = uuidv4();
-  const systemPrompt = SYSTEM_PROMPTS[mode](jobDescription, resumeText);
+  const systemPrompt = SYSTEM_PROMPTS[mode](jobDescription, resumeText, weakestCategory);
 
   // Build initial conversation — user kickoff ensures the model waits for real answers
   const conversationHistory = [
@@ -213,10 +262,42 @@ async function startSession(userId, jobDescription, mode) {
   };
 }
 
+// ─── Concurrency: claim/release lock ──────────────────────────────
+const STALE_LOCK_MS = 2 * 60 * 1000;
+
+async function claimSession(sessionId) {
+  const session = await LiveInterviewSession.findOneAndUpdate(
+    {
+      sessionId,
+      $or: [
+        { locked: { $ne: true } },
+        { lockedAt: { $lt: new Date(Date.now() - STALE_LOCK_MS) } }
+      ]
+    },
+    { $set: { locked: true, lockedAt: new Date() } },
+    { new: true }
+  );
+  if (session) return session;
+
+  const exists = await LiveInterviewSession.exists({ sessionId });
+  if (!exists) {
+    const err = new Error('Session not found');
+    err.status = 404;
+    throw err;
+  }
+  const err = new Error('Session is busy processing another response');
+  err.status = 409;
+  throw err;
+}
+
+async function releaseSession(sessionId) {
+  await LiveInterviewSession.updateOne({ sessionId }, { $set: { locked: false } });
+}
+
 // ─── Respond to User Answer ──────────────────────────────────────
 async function respondToAnswer(sessionId, userAnswer, codeSubmission = null) {
-  const session = await LiveInterviewSession.findOne({ sessionId });
-  if (!session) throw new Error('Session not found');
+  const session = await claimSession(sessionId);
+  try {
   if (session.status !== 'active') throw new Error('Session is no longer active');
 
   // Build the user message
@@ -265,12 +346,15 @@ async function respondToAnswer(sessionId, userAnswer, codeSubmission = null) {
     questionNumber: aiResponse.questionNumber || session.questions.length,
     codingProblem: aiResponse.codingProblem || null
   };
+  } finally {
+    await releaseSession(sessionId);
+  }
 }
 
 // ─── End Session ─────────────────────────────────────────────────
 async function endSession(sessionId) {
-  const session = await LiveInterviewSession.findOne({ sessionId });
-  if (!session) throw new Error('Session not found');
+  const session = await claimSession(sessionId);
+  try {
 
   // Generate comprehensive summary via LLM
   const summaryPrompt = `You conducted a mock ${session.mode} interview. Here is the full conversation:
@@ -332,15 +416,21 @@ Return ONLY the JSON.`;
     categoryScores: summary.categoryScores
   };
 
-  // Track in heatmap
-  try {
-    const HeatmapService = require('./heatmapService');
-    await HeatmapService.addActivity(session.userId.toString(), 'live_interview_completed', {
-      description: `Completed live ${session.mode} mock interview (${session.questions.length} questions)`,
-      metadata: { sessionId, mode: session.mode, score: summary.overallScore }
-    });
-  } catch (trackingErr) {
-    console.warn('Heatmap tracking failed:', trackingErr.message);
+  // Track in heatmap — guarded by heatmapRecorded so a retry after a
+  // partial failure (e.g. session.save() below throwing) doesn't record
+  // the activity twice; the flag is persisted in the same save() as the
+  // rest of the session state, not as a separate write.
+  if (!session.heatmapRecorded) {
+    try {
+      const HeatmapService = require('./heatmapService');
+      await HeatmapService.addActivity(session.userId.toString(), 'live_interview_completed', {
+        description: `Completed live ${session.mode} mock interview (${session.questions.length} questions)`,
+        metadata: { sessionId, mode: session.mode, score: summary.overallScore }
+      });
+      session.heatmapRecorded = true;
+    } catch (trackingErr) {
+      console.warn('Heatmap tracking failed:', trackingErr.message);
+    }
   }
 
   await session.save();
@@ -351,6 +441,9 @@ Return ONLY the JSON.`;
     questionCount: session.questions.length,
     durationMinutes: session.metrics.totalDurationMinutes
   };
+  } finally {
+    await releaseSession(sessionId);
+  }
 }
 
 // ─── Helper: Call LLM with conversation history ──────────────────
@@ -391,4 +484,4 @@ async function callLLMWithHistory(conversationHistory, context = {}) {
   }
 }
 
-module.exports = { startSession, respondToAnswer, endSession };
+module.exports = { startSession, respondToAnswer, endSession, getRollingCategoryScores, pickWeakestCategory };
