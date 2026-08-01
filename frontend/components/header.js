@@ -21,6 +21,7 @@ export default function Header() {
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/interview', label: 'Interview' },
     { href: '/aptitude', label: 'Aptitude' },
+    { href: '/system-design', label: 'System Design' },
     { href: '/upload', label: 'Upload' },
     { href: '/profile', label: 'Profile' },
   ];

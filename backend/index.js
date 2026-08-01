@@ -62,6 +62,7 @@ const interviewRoutes = require('./routes/interview.js');
 const profileRoutes = require('./routes/profile.js');
 const liveInterviewRoutes = require('./routes/liveInterview.js');
 const aptitudeRoutes = require('./routes/aptitude.js');
+const systemDesignRoutes = require('./routes/systemDesign.js');
 
 app.use('/api/llm', llmRoutes);
 app.use('/api/user', userRoutes);
@@ -72,6 +73,7 @@ app.use('/api/interview', interviewRoutes);
 app.use('/api/profile', profileRoutes);
 app.use('/api/live-interview', liveInterviewRoutes);
 app.use('/api/aptitude', aptitudeRoutes);
+app.use('/api/system-design', systemDesignRoutes);
 
 
 const { scheduleAutoApply } = require('./cron/dailyApply.js');
