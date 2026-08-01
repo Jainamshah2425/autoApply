@@ -146,6 +146,21 @@ if (process.env.MONGODB_URI) {
       } catch (seedErr) {
         console.warn('⚠️  Aptitude seed skipped:', seedErr.message);
       }
+      try {
+        const SystemDesignQuestion = require('./models/SystemDesignQuestion');
+        const systemDesignCount = await SystemDesignQuestion.countDocuments();
+        if (systemDesignCount === 0) {
+          console.log('📐 System design bank empty — seeding questions...');
+          const { execSync } = require('child_process');
+          const path = require('path');
+          execSync('node scripts/seedSystemDesignQuestions.js', {
+            cwd: path.join(__dirname),
+            stdio: 'inherit',
+          });
+        }
+      } catch (seedErr) {
+        console.warn('⚠️  System design seed skipped:', seedErr.message);
+      }
       scheduleAutoApply();
       scheduleAptitudeRefresh();
     })
